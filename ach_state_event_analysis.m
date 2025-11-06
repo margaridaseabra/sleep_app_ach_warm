@@ -86,6 +86,7 @@ isWAKE = state_vec==WAKE_CODE;
 isNREM = state_vec==NREM_CODE;
 isREM  = state_vec==REM_CODE;
 
+
 %% ----------------- Load/define events ---------------------
 % Option A: CSV with header: label,time_s
 events = struct('label',{},'time_s',{});
@@ -120,7 +121,78 @@ span_pts = max(5, round(S.trend_span * fs_ach));
 trend = smooth(ach, span_pts, 'rlowess');
 resid = ach - trend;
 
-%% ----------------- State-conditioned stats ----------------
+%% ----------------- Bout extraction + per-bout stats -----------------
+% Epoch-level run-length encode (RLE) of sleep_scores
+s = sleep_scores(:);
+edges = [true; diff(s)~=0; true];
+start_ep = find(edges(1:end-1));
+end_ep   = find(edges(2:end)-1);
+bout_code = s(start_ep);
+nB = numel(start_ep);
+
+% Helper for IQR that ignores NaN
+nan_iqr = @(x) diff(quantile(x(~isnan(x)), [0.25 0.75]));
+
+% Prealloc
+bout_rows = cell(nB,1);
+
+for k = 1:nB
+    code = bout_code(k);
+    t0 = (start_ep(k)-1)*EPOCH_SEC;  % seconds (inclusive)
+    t1 =  end_ep(k)*EPOCH_SEC;       % seconds (exclusive of next epoch)
+    % Map to ACh sample indices
+    s0 = max(1, floor(t0*fs_ach)+1);
+    s1 = min(nS, max(s0, floor(t1*fs_ach)));
+
+    xi = ach(s0:s1);
+    ti = trend(s0:s1);
+    tt = t_ach(s0:s1);
+
+    % Robust slope of trend (dF/F per minute)
+    if numel(tt) >= 3
+        p  = polyfit(tt, ti, 1);       % slope in dF/F per sec
+        slope_trend_per_min = p(1)*60; % convert to per-minute
+    else
+        slope_trend_per_min = NaN;
+    end
+
+    % Events inside this bout
+    in_labels = strings(0,1);
+    for e = 1:numel(events)
+        if events(e).time_s >= t0 && events(e).time_s < t1
+            in_labels(end+1,1) = events(e).label; %#ok<AGROW>
+        end
+    end
+    if isempty(in_labels), event_labels_in = ""; else, event_labels_in = strjoin(in_labels,';'); end
+    n_events_in = numel(in_labels);
+
+    % Build row
+    bout_rows{k} = table( ...
+        k, code, start_ep(k), end_ep(k), t0, t1, (t1 - t0), ...
+        mean(xi,'omitnan'), median(xi,'omitnan'), nan_iqr(xi), std(xi,0,'omitnan'), numel(xi), ...
+        mean(ti,'omitnan'), median(ti,'omitnan'), nan_iqr(ti), std(ti,0,'omitnan'), numel(ti), ...
+        slope_trend_per_min, string(event_labels_in), n_events_in, ...
+        'VariableNames', {'bout_id','state_code','start_epoch','end_epoch','start_time_s','end_time_s','dur_s', ...
+                          'ach_mean','ach_median','ach_iqr','ach_std','ach_n', ...
+                          'trend_mean','trend_median','trend_iqr','trend_std','trend_n', ...
+                          'trend_slope_per_min','event_labels_in','n_events_in'});
+end
+
+bout_stats = vertcat(bout_rows{:});
+
+% Optional: human-readable state name
+state_name = strings(height(bout_stats),1);
+state_name(bout_stats.state_code==WAKE_CODE) = "WAKE";
+state_name(bout_stats.state_code==NREM_CODE) = "NREM";
+state_name(bout_stats.state_code==REM_CODE ) = "REM";
+bout_stats.state = state_name;
+
+% Reorder columns
+bout_stats = movevars(bout_stats, 'state', 'After', 'state_code');
+
+% Save
+writetable(bout_stats, fullfile(out_dir,'bout_stats.csv'));
+
 %% ----------------- State-conditioned stats ----------------
 % Safer IQR for vectors with NaNs
 nan_iqr = @(x) diff(quantile(x(~isnan(x)), [0.25 0.75])) ;
@@ -228,25 +300,45 @@ if ~isempty(peaks_rows)
     writetable(peaks, fullfile(out_dir,'event_peaks.csv'));
 end
 
-%% ------------ FIG 1: Global signal + trend + states + events -------------
-figure('Color','w','Name','Global ACh with states & events');
-plot(t_ach, ach, 'LineWidth',0.5); hold on;
-plot(t_ach, trend, 'LineWidth',1.8);
-legend('ACh','LOWESS trend','Location','best'); ylabel('ACh (dF/F)'); xlabel('Time (s)');
-title('Global ACh with LOWESS trend'); grid on; box on;
+%% ------------ FIG 1 (enhanced): ACh + trend + events + hypnogram -------
+figure('Color','w','Name','Whole recording — ACh, states, events');
+tiledlayout(2,1,'TileSpacing','compact','Padding','compact');
 
-% overlay state bands (light transparent patches)
-yl = ylim;
+% --- Top: ACh with LOWESS trend, state bands, event labels ---
+ax1 = nexttile;
+plot(t_ach, ach, 'LineWidth', 0.6); hold on;
+plot(t_ach, trend, 'LineWidth', 1.8);
+ylabel('\DeltaF/F'); title('ACh (raw) + LOWESS trend');
+grid on; box on;
+
+% Transparent state patches
+yl = ylim(ax1);
 add_state_patch(t_ach, isWAKE, [0.85 0.92 1.00], yl, 'WAKE');   % pale blue
 add_state_patch(t_ach, isNREM, [1.00 0.88 0.88], yl, 'NREM');   % pale red
 add_state_patch(t_ach, isREM,  [0.88 1.00 0.88], yl, 'REM');    % pale green
 
-% events as vertical lines
+% Event markers + text labels (on the top)
 for k=1:numel(events)
-    xline(events(k).time_s,'k-','LineWidth',1.2);
+    xline(ax1, events(k).time_s, 'k-', 'LineWidth', 1.0);
     text(events(k).time_s, yl(2), sprintf('  %s', events(k).label), ...
-        'VerticalAlignment','top','Rotation',90,'FontSize',8);
+        'Parent', ax1,'VerticalAlignment','top','Rotation',90,'FontSize',8);
 end
+legend(ax1, {'ACh','LOWESS trend'}, 'Location','best');
+
+% --- Bottom: Hypnogram (epoch-level) ---
+ax2 = nexttile; hold(ax2,'on');
+% Build a step-wise hypnogram aligned to epoch edges
+te = (0:nEpoch)*EPOCH_SEC;
+ss = [sleep_scores(:); sleep_scores(end)];  % repeat last for stairs
+stairs(ax2, te, double(ss), 'LineWidth', 1.2);
+ylim(ax2, [min(ss)-0.5, max(ss)+0.5]);
+yticks(ax2, unique([WAKE_CODE NREM_CODE REM_CODE]));
+yticklabels(ax2, {'WAKE','NREM','REM'});    % order will match your codes
+xlabel(ax2, 'Time (s)'); ylabel(ax2, 'State');
+title(ax2, 'Hypnogram (epoch scoring)');
+grid(ax2,'on'); box(ax2,'on');
+
+linkaxes([ax1 ax2],'x');
 
 %% ------------ FIG 2: State-conditioned distributions --------------------
 figure('Color','w','Name','State-conditioned ACh');
