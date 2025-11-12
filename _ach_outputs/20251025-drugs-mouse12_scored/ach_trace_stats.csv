@@ -1,0 +1,2 @@
+ach_mean,ach_median,ach_iqr,ach_std,ach_mad,ach_rms,ach_skew,ach_kurt,ach_trend_mean,ach_trend_median,ach_trend_iqr,ach_trend_std,resid_mean,resid_iqr,resid_std,resid_mad,halflife_s,psd_slope,psd_intercept,slope_ach_trend_per_min_global
+-0.5324418,-0.7091532,2.857562,2.098565,1.417353,2.165054,NaN,NaN,-0.5868142,-0.8702372,2.689185,1.892942,0.05437232,0.786348,0.7712542,0.3875335,3.047557,-2.368583,-2.587862,-0.008511924

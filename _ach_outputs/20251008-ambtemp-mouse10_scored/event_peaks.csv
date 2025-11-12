@@ -1,0 +1,3 @@
+label,event_time_s,state_at_event,peak_val,t_peak_s,auc_0to300s
+ambtemp_end,22000,NREM,1.5974828004837,4,183.670427949866
+ambtemp_start,11000,NREM,1.49824953079224,154,-53.7413223981857

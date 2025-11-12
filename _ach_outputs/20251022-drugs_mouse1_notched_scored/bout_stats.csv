@@ -1,4 +1,4 @@
-bout_id,state_code,state,start_epoch,end_epoch,start_time_s,end_time_s,dur_s,ach_mean,ach_median,ach_iqr,ach_std,ach_n,trend_mean,trend_median,trend_iqr,trend_std,trend_n,trend_slope_per_min,event_labels_in,n_events_in
+bout_id,state_code,state,start_epoch,end_epoch,start_time_s,end_time_s,dur_s,ach_mean,ach_median,ach_iqr,ach_std,ach_n,ach_trend_mean,ach_trend_median,ach_trend_iqr,ach_trend_std,ach_trend_n,ach_trend_slope_per_min,event_labels_in,n_events_in
 1,0,WAKE,1,1,0,1,1,-33.44629,-24.04922,63.92633,38.34129,10,0.8971715,0.8971646,0.02717012,0.0164522,10,-3.316639,,0
 2,1,NREM,1157,2,1156,2,-1154,-2.490645,-2.490645,0,0,1,-3.722972,-3.722972,0,0,1,NaN,,0
 3,0,WAKE,1302,3,1301,3,-1298,0.4006971,0.4006971,0,0,1,-0.8292861,-0.8292861,0,0,1,NaN,,0

@@ -1,0 +1,259 @@
+function OUT = sleep_architecture_from_scores(scores_csv, varargin)
+% Compute sleep architecture metrics (WK/NREM/REM ± MA) from a 1 Hz CSV.
+% Now with correct bout detection and MA reclassification (Wake bouts ≤ threshold -> MA).
+%
+% Usage:
+% OUT = sleep_architecture_from_scores('mouse2_base_scores_1Hz.csv', ...
+%     'codes', struct('WK',1,'NREM',4,'REM',9,'MA',15), ...
+%     'includeMA', false, ...
+%     'ma_thresh_sec', 15, ...
+%     'reclassify_short_wake_to_MA', true, ...
+%     'out_prefix','mouse2_base', ...
+%     'out_dir', pwd, ...
+%     'write_log', true, ...
+%     'verbose', true);
+
+p = inputParser;
+addRequired(p,'scores_csv',@ischar);
+addParameter(p,'codes',struct('WK',1,'NREM',4,'REM',9,'MA',15),@isstruct);
+addParameter(p,'includeMA',false,@islogical);
+addParameter(p,'t0',[],@(x) isempty(x)||isscalar(x));                 % absolute start (s), optional
+addParameter(p,'ma_thresh_sec',15,@(x)isscalar(x)&&x>0);              % ≤ threshold = MA
+addParameter(p,'reclassify_short_wake_to_MA',true,@islogical);        % only applies to WK runs
+addParameter(p,'out_prefix','',@ischar);                               % base name for exports
+addParameter(p,'out_dir','',@ischar);                                  % where to save (default: alongside CSV)
+addParameter(p,'write_log',true,@islogical);
+addParameter(p,'verbose',true,@islogical);
+parse(p, scores_csv, varargin{:});
+S = p.Results; C = S.codes;
+if S.includeMA && ~isfield(C,'MA')
+    warning('includeMA=true but codes.MA is missing; disabling MA output.');
+    S.includeMA = false;
+end
+
+OUT = struct('per_hour',[],'overall',[],'runs',[],'params',struct(), ...
+             'files',struct(),'success',false);
+
+% ---- Load 1 Hz labels
+T = readtable(scores_csv);
+assert(all(ismember({'time_s','score'}, T.Properties.VariableNames)), ...
+    'Expected columns time_s and score in %s', scores_csv);
+t = double(T.time_s(:));
+code = double(T.score(:));
+
+% Normalize time to start at zero for binning
+if isempty(S.t0), t0 = min(t); else, t0 = S.t0; end
+t_rel    = t - t0;                     % seconds from start
+hour_idx = floor(t_rel / 3600);        % 0-based hour bins
+n_hours  = max(hour_idx) + 1;
+
+% ===== Reclassify MA on the 1 Hz code vector (WK runs ≤ threshold -> MA) =====
+% Only change WK; keep existing MA as-is. Do this BEFORE bout computation.
+if S.reclassify_short_wake_to_MA && isfield(C,'MA')
+    [st0, en0] = runs_from_codes(code);           % runs on the current code vector
+    rc   = code(st0);                              % run codes
+    rdur = t(en0) - t(st0) + 1;                    % inclusive seconds
+    is_short_wake = (rc == C.WK) & (rdur <= S.ma_thresh_sec);
+    for k = find(is_short_wake).'
+        code(st0(k):en0(k)) = C.MA;                % relabel those seconds to MA
+    end
+end
+
+% ---- Contiguous runs (bouts) AFTER MA handling
+[starts, ends_] = runs_from_codes(code);
+run_code   = code(starts);
+run_start  = t(starts);
+run_end    = t(ends_);
+run_dur_s  = run_end - run_start + 1;             % seconds (1 Hz, inclusive)
+Runs = table(run_code, run_start, run_end, run_dur_s, ...
+             'VariableNames',{'state_code','start_s','end_s','dur_s'});
+
+% ---- States to report
+state_list  = {'WK','NREM','REM'};
+state_codes = [C.WK, C.NREM, C.REM];
+if S.includeMA && isfield(C,'MA')
+    state_list  = [state_list, {'MA'}];
+    state_codes = [state_codes, C.MA];
+end
+% ---- Per-hour durations (seconds in state within each hour)
+PerHour = table((0:n_hours-1)', 'VariableNames',{'hour_idx'});
+PerHour.hour_start_s = PerHour.hour_idx*3600 + t0;
+for i = 1:numel(state_list)
+    sc = state_codes(i);
+    mask = (code == sc);
+    dur_by_hr = accumarray(hour_idx+1, mask, [n_hours,1], @sum, 0);
+    PerHour.([lower(state_list{i}) '_dur_s']) = dur_by_hr;
+end
+
+% ---- Per-hour bouts (count bout STARTS landing in each hour)
+PerHourB = PerHour(:,{'hour_idx','hour_start_s'});
+for i = 1:numel(state_list)
+    sc = state_codes(i);
+    mask_runs = (Runs.state_code == sc);
+    start_hr = floor( (Runs.start_s(mask_runs) - t0) / 3600 );
+    starts_by_hr = accumarray(start_hr+1, 1, [n_hours,1], @sum, 0);
+    PerHourB.([lower(state_list{i}) '_bouts_per_h']) = starts_by_hr;
+end
+PerHour = join(PerHourB, PerHour, 'Keys', {'hour_idx','hour_start_s'});
+
+
+% ---- Overall metrics
+overall_rows = strings(numel(state_list),1);
+n_bouts = zeros(numel(state_list),1);
+tot_dur = zeros(numel(state_list),1);
+mean_dur = zeros(numel(state_list),1);
+for i = 1:numel(state_list)
+    sc = state_codes(i);
+    mask_runs   = (Runs.state_code == sc);
+    n_bouts(i)  = nnz(mask_runs);
+    tot_dur(i)  = sum(Runs.dur_s(mask_runs));
+    mean_dur(i) = mean_or_nan(Runs.dur_s(mask_runs));
+    overall_rows(i) = state_list{i};
+end
+Overall = table(overall_rows, n_bouts, tot_dur, mean_dur, ...
+    'VariableNames', {'state','n_bouts','total_dur_s','mean_bout_dur_s'});
+
+% ---- Save (optional)
+files = struct(); out_dir = '';
+if ~isempty(S.out_prefix)
+    if isempty(S.out_dir)
+        % prefer folder of scores_csv if it resolves, else pwd
+        [csv_dir,~,~] = fileparts(localize_path(scores_csv));
+        if isempty(csv_dir), csv_dir = pwd; end
+        out_dir = ensure_writable_dir(csv_dir, scores_csv);
+    else
+        out_dir = ensure_writable_dir(S.out_dir, scores_csv);
+    end
+
+    f_perhour = fullfile(out_dir, sprintf('%s_arch_per_hour.csv',  S.out_prefix));
+    f_overall = fullfile(out_dir, sprintf('%s_arch_overall.csv',  S.out_prefix));
+    f_runs    = fullfile(out_dir, sprintf('%s_arch_runs.csv',     S.out_prefix));
+    f_log     = fullfile(out_dir, sprintf('%s_arch_summary.log.txt', S.out_prefix));
+
+    writetable(PerHour, f_perhour);
+    writetable(Overall, f_overall);
+    writetable(Runs,    f_runs);
+
+    files.per_hour = f_perhour; files.overall = f_overall; files.runs = f_runs;
+
+    if S.write_log
+        fid = fopen(f_log,'w');
+        if fid>0
+            fprintf(fid, "Sleep architecture summary\n");
+            fprintf(fid, "Source CSV : %s\n", absolute_path(scores_csv));
+            fprintf(fid, "Output dir : %s\n", out_dir);
+            fprintf(fid, "Hours      : %d\n", n_hours);
+            fprintf(fid, "Include MA : %d\n", S.includeMA);
+            if any(code==C.MA)
+                nMA   = nnz(Runs.state_code==C.MA);
+                MAsec = sum(Runs.dur_s(Runs.state_code==C.MA));
+                fprintf(fid, "MA bouts   : %d  | MA seconds: %d\n", nMA, MAsec);
+                fprintf(fid, "MA rule    : Wake bouts ≤ %d s reclassified to MA\n", S.ma_thresh_sec);
+            end
+            fprintf(fid, "\nOverall metrics:\n");
+            for i=1:height(Overall)
+                fprintf(fid, "  %-4s  bouts=%4d  total=%7.0fs  mean=%6.1fs\n", ...
+                    Overall.state{i}, Overall.n_bouts(i), Overall.total_dur_s(i), Overall.mean_bout_dur_s(i));
+            end
+            fprintf(fid, "\nFiles:\n  %s\n  %s\n  %s\n", f_perhour, f_overall, f_runs);
+            fclose(fid);
+            files.log = f_log;
+        end
+    end
+end
+
+% ---- Console summary
+if S.verbose
+    fprintf('✅ Sleep architecture computed');
+    if ~isempty(out_dir), fprintf(' | 📂 Saved to: %s\n', out_dir); else, fprintf('\n'); end
+    fprintf('🕒 Hours: %d | States: %s\n', n_hours, strjoin(state_list, ', '));
+
+    if isfield(C,'MA')
+        nMA   = nnz(Runs.state_code == C.MA);
+        if nMA > 0
+            MAsec = sum(Runs.dur_s(Runs.state_code == C.MA));
+            fprintf('   (MA) bouts=%d  seconds=%d  (rule: WK ≤ %ds)\n', nMA, MAsec, S.ma_thresh_sec);
+        end
+    end
+
+    for i=1:height(Overall)
+        fprintf('  • %-4s  bouts=%4d  total=%7.0fs  mean=%6.1fs\n', ...
+            Overall.state{i}, Overall.n_bouts(i), Overall.total_dur_s(i), Overall.mean_bout_dur_s(i));
+    end
+end
+
+
+% ---- Pack outputs
+OUT.per_hour = PerHour;
+OUT.overall  = Overall;
+OUT.runs     = Runs;
+OUT.params   = struct('codes',C,'includeMA',S.includeMA,'t0',t0, ...
+                      'ma_thresh_sec',S.ma_thresh_sec, ...
+                      'reclassify_short_wake_to_MA',S.reclassify_short_wake_to_MA);
+OUT.files    = files;
+OUT.success  = true;
+end
+
+% ================= Helpers =================
+function m = mean_or_nan(x)
+if isempty(x), m = NaN; else, m = mean(x); end
+end
+
+function [starts, ends_] = runs_from_codes(code_vec)
+% Correct contiguous-run finder on a 1 Hz code vector (numeric, no NaNs).
+cv = code_vec(:);
+starts = find([true; diff(cv) ~= 0]);
+ends_  = [starts(2:end)-1; numel(cv)];
+end
+
+function out_dir = ensure_writable_dir(requested, src_file)
+% Robust directory handling with permission test + fallbacks.
+    if isempty(requested), requested = pwd; end
+    if startsWith(requested, "~")
+        requested = fullfile(char(java.lang.System.getProperty("user.home")), requested(3:end));
+    end
+    if ~isfolder(requested)
+        try
+            mkdir(requested);
+        catch
+            [src_dir,~,~] = fileparts(localize_path(src_file));
+            if isempty(src_dir), src_dir = pwd; end
+            candidates = {src_dir, fullfile(src_dir,'exports'), tempdir};
+            made = false;
+            for c = candidates
+                d = c{1};
+                try
+                    if ~isfolder(d), mkdir(d); end
+                    if can_write_here(d), requested = d; made = true; break; end
+                catch
+                end
+            end
+            if ~made
+                error('Cannot create or write to any output folder. Pass a different ''out_dir'' (e.g., pwd).');
+            end
+        end
+    end
+    if ~can_write_here(requested)
+        error('No write permission in "%s". Pass a different ''out_dir'' (e.g., pwd).', requested);
+    end
+    out_dir = requested;
+end
+
+function tf = can_write_here(d)
+    tf = false;
+    testFile = fullfile(d, ['.__writetest__' char(java.util.UUID.randomUUID) '.tmp']);
+    fid = fopen(testFile,'w');
+    if fid>0, fclose(fid); delete(testFile); tf = true; end
+end
+
+function p = absolute_path(f)
+    lf = localize_path(f);
+    [d,n,e] = fileparts(lf);
+    if isempty(d), p = lf; else, p = fullfile(d,[n e]); end
+end
+
+function f = localize_path(f_in)
+% Return absolute-ish path even if CSV was given relative.
+    if exist(f_in,'file'), f = which(f_in); else, f = f_in; end
+    if isempty(f), f = f_in; end
+end
