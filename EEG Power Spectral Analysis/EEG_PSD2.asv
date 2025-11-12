@@ -1,0 +1,113 @@
+% Load EEG and scoring data
+eegFile = '/Users/margaridaseabra/Library/CloudStorage/OneDrive-UniversityofCopenhagen/scored files/20251002-mouse2-baseline_test.mat';
+scoreFile = '/Users/margaridaseabra/Library/CloudStorage/OneDrive-UniversityofCopenhagen/scored files/mouse2_base_scores_tt.mat';
+
+% Load files
+eegData = load(eegFile);
+scoreData = load(scoreFile);
+
+% Extract EEG and sampling frequency
+EEG = eegData.eeg;
+Fs = eegData.eeg_frequency;
+
+% Extract sleep scoring data
+TT = scoreData.TT;       % Timetable with state annotations
+C = scoreData.C;         % Contains state codes
+score = TT{:,1};         % Convert timetable to numeric score vector
+epochLength = scoreData.epochSec;
+samplesPerEpoch = round(Fs * epochLength);
+
+% Define states
+states = struct('Wake', C.WK, 'NREM', C.NREM, 'REM', C.REM);
+
+% Define frequency bands (split lGamma to exclude 50Hz)
+bands = struct('Delta', [1, 4], ...
+               'Theta', [5, 9], ...
+               'Alpha', [10, 15], ...
+               'Beta', [15, 30], ...
+               'lGamma1', [30, 49], ...
+               'lGamma2', [51, 60], ...
+               'hGamma', [61, 100]);
+
+% Output folder
+outputFolder = 'EEG_Power_Analysis';
+if ~exist(outputFolder, 'dir')
+    mkdir(outputFolder);
+end
+
+% Loop over each state
+stateNames = fieldnames(states);
+for s = 1:length(stateNames)
+    stateName = stateNames{s};
+    stateVal = states.(stateName);
+    epochs = find(score == stateVal);
+    fprintf('%s: %d epochs\n', stateName, length(epochs));
+    if isempty(epochs)
+        fprintf('No data for state: %s\n', stateName);
+        continue;
+    end
+
+    % --- PSD averaging across epochs ---
+    allPxx = [];
+    F_ref = [];
+    for i = 1:length(epochs)
+        startIdx = round((epochs(i)-1)*samplesPerEpoch + 1);
+        endIdx   = round(startIdx + samplesPerEpoch - 1);
+        if endIdx <= length(EEG)
+            segment = EEG(startIdx:endIdx);
+            [pxx, F] = pwelch(segment, hamming(512), [], [], Fs);
+
+            if isempty(F_ref)
+                F_ref = F;  % Set frequency reference on first epoch
+            end
+
+            if length(pxx) ~= length(F_ref)
+                warning('Skipping epoch %d due to mismatched PSD size.', i);
+                continue;
+            end
+
+            allPxx(:, end+1) = pxx;
+        end
+    end
+
+    % Average PSD
+    meanPxx = mean(allPxx, 2);
+
+    % --- Plot PSD ---
+    fig = figure('Visible','off');
+    semilogy(F_ref, meanPxx, 'k', 'LineWidth', 1.5);
+    xline(50, '--r', '50 Hz Notch', 'LabelOrientation','horizontal', ...
+          'LabelVerticalAlignment','bottom');
+    grid on;
+    xlabel('Frequency (Hz)');
+    ylabel('Power Spectral Density (uV^2/Hz)');
+    title(['PSD - ' stateName]);
+    xlim([0 100]);
+    saveas(fig, fullfile(outputFolder, [stateName '_PSD.png']));
+    close(fig);
+
+    % --- Compute relative band power ---
+    totalPower = trapz(F_ref, meanPxx);
+
+    bandPowers = struct();
+    bandNames = fieldnames(bands);
+    for b = 1:length(bandNames)
+        bandName = bandNames{b};
+        range = bands.(bandName);
+        idx = F_ref >= range(1) & F_ref <= range(2);
+        bandPower = trapz(F_ref(idx), meanPxx(idx));
+        bandPowers.(bandName) = 100 * (bandPower / totalPower);
+    end
+
+    % --- Save band power results ---
+    txtFile = fullfile(outputFolder, [stateName '_band_power.txt']);
+    fid = fopen(txtFile, 'w');
+    fprintf(fid, 'Relative band power for %s\n', stateName);
+    for b = 1:length(bandNames)
+        fprintf(fid, '%s: %.2f %%\n', bandNames{b}, bandPowers.(bandNames{b}));
+    end
+    fclose(fid);
+end
+
+disp('EEG power and band analysis complete.');
+%%%
