@@ -25,7 +25,7 @@ addParameter(p,'eegVar','eeg',@ischar);
 addParameter(p,'write_log',true,@islogical);
 
 % Code scheme (edit to your scoring)
-C_default = struct('WK',0,'NREM',1,'REM',0,'MA',15);
+C_default = struct('WK',0,'NREM',1,'REM',2,'MA',15);
 addParameter(p,'codes',C_default,@isstruct);
 
 % MA rule
@@ -48,26 +48,42 @@ try
     scores_epoch = D.(S.scoreVar)(:).';    % row vector of epoch labels
     Nepoch = numel(scores_epoch);
 
-    % -------- Detect epoch length (sec)
-    epochSec = S.epochSec;
-    if isempty(epochSec)
-        cand = [];
-        for k = ["epoch_len_sec","epoch_length","epoch_sec","scoring_epoch_sec"]
-            if isfield(D,k), cand = D.(k); break; end
-        end
-        if ~isempty(cand)
-            epochSec = double(cand);
-        else
-            % Infer from EEG if present
-            assert(isfield(D,S.fsVar)&&isfield(D,S.eegVar), ...
-                'Provide epochSec or include EEG + fs to infer it.');
-            fs = double(D.(S.fsVar)); Neeg = numel(D.(S.eegVar));
-            T  = Neeg / fs; epochSec = round(T / Nepoch);
-            if abs(epochSec-1)<0.2, epochSec=1; end
-            if abs(epochSec-5)<0.5, epochSec=5; end
-        end
+% -------- Detect & validate epoch length (sec)
+epochSec = S.epochSec;
+
+% 1) metadata keys
+if isempty(epochSec)
+    meta_keys = ["epoch_len_sec","epoch_length","epoch_sec","scoring_epoch_sec"];
+    for k = meta_keys
+        if isfield(D,k), epochSec = double(D.(k)); break; end
     end
-    R.epochSec = epochSec;
+end
+
+% 2) infer from EEG length if still empty
+if isempty(epochSec) || ~isfinite(epochSec)
+    if isfield(D,S.fsVar) && isfield(D,S.eegVar)
+        fs   = double(D.(S.fsVar));
+        Neeg = numel(D.(S.eegVar));
+        Trec = Neeg / max(fs, eps);          % seconds
+        epochSec = Trec / max(Nepoch, 1);
+    end
+end
+
+% 3) coerce to nearest typical value
+candidates = [1 2 5 10 15 20 30];
+if ~isempty(epochSec) && isfinite(epochSec) && epochSec > 0
+    [~,ix] = min(abs(candidates - epochSec));
+    epochSec = candidates(ix);
+end
+
+% 4) final validation
+if isempty(epochSec) || ~isscalar(epochSec) || ~isfinite(epochSec) || epochSec <= 0
+    error(['Could not determine a valid epoch length. ' ...
+           'Pass ''epochSec'', or include EEG + fs, or provide metadata (epoch_len_sec).']);
+end
+epochSec = round(epochSec);           % ensure integer
+R.epochSec = epochSec;
+
 
     % -------- Expand to 1 Hz (NO interpolation)
     t0 = S.startTime; R.t0 = t0;
