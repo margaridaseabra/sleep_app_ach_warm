@@ -170,7 +170,7 @@ R.epochSec = epochSec;
              S.out_dir, epochSec, S.ma_thresh_sec, n_MA, MA_sec, pct_wake_reclassified, f1, f2, f3);
 
 catch ME
-    warning('Export failed: %s', ME.message);
+    warning('export_sleep_scores_with_MA:ExportFailed', 'Export failed: %s', ME.message);
     R.success = false;
 end
 end

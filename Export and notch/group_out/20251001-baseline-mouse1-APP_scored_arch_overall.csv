@@ -1,0 +1,4 @@
+state,n_bouts,total_dur_s,mean_bout_dur_s
+WK,61,14400,236.065573770492
+NREM,74,16972,229.351351351351
+REM,28,2555,91.25
