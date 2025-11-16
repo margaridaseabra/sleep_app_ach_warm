@@ -25,7 +25,9 @@ function OUT = ach_analysis(mat_file, scores_csv, varargin)
 %   'base_win'   : baseline window (relative to transition) for offset,
 %                  default [-60 -10] s
 %   'resp_win'   : response window to search for peak dF/F, default [0 60] s
+%   'slope_win'  : window for transition slope fit (default [0 60] s)
 %
+%   'psd_fmin'   : min frequency for ACh PSD (Hz), default 0.01
 %   'psd_fmax'   : max frequency for ACh PSD (Hz), default 0.15
 %   'psd_win_sec': Welch window length (sec) for PSD, default 300 s
 %
@@ -39,18 +41,20 @@ function OUT = ach_analysis(mat_file, scores_csv, varargin)
 %   OUT.transitions : struct array, one per transition type
 %                     .name
 %                     .n_events
+%                     .t_events
+%                     .idx_epochs
 %                     .t_rel    (time vector, s)
 %                     .traces   (n_time x n_events, baseline-corrected)
 %                     .mean     (n_time x 1)
 %                     .sem      (n_time x 1)
 %                     .peaks    (peak dF/F per event)
+%                     .slopes   (slope per event in slope_win)
 %
-%   OUT.psd         : struct for NREM ACh PSD
-%                     .f       (Hz)
-%                     .psd     (power)
-%                     .band_power
-%                     .peak_freq
-%                     .peak_amp
+%   OUT.psd         : struct with fields .Wake .NREM .REM
+%                     each: .f, .psd, .band_power, .peak_freq, .peak_amp
+%
+%   OUT.state_slopes: struct with fields .Wake .NREM .REM
+%                     each: .mean, .sem, .n
 %
 %   OUT.files.metrics_csv
 %   OUT.files.trans_fig
@@ -71,6 +75,7 @@ addParameter(p,'reclassify_short_wake_to_MA',true,@islogical);
 addParameter(p,'trans_win',[-100 100],@(x)isnumeric(x)&&numel(x)==2);
 addParameter(p,'base_win',[-60 -10],@(x)isnumeric(x)&&numel(x)==2);
 addParameter(p,'resp_win',[0 60],@(x)isnumeric(x)&&numel(x)==2);
+addParameter(p,'slope_win',[0 60],@(x)isnumeric(x)&&numel(x)==2);
 
 addParameter(p,'psd_fmin',0.01,@(x)isscalar(x)&&x>=0);
 addParameter(p,'psd_fmax',0.15,@(x)isscalar(x)&&x>0);
@@ -83,9 +88,10 @@ addParameter(p,'out_dir','',@ischar);
 addParameter(p,'verbose',true,@islogical);
 
 parse(p, mat_file, scores_csv, varargin{:});
-S = p.Results;
-C = S.codes;
-verbose = S.verbose;
+S        = p.Results;
+C        = S.codes;
+verbose  = S.verbose;
+slope_win = S.slope_win;
 
 if isempty(S.out_dir)
     S.out_dir = fileparts(scores_csv);
@@ -112,7 +118,7 @@ assert(all(ismember({'time_s','score'}, T.Properties.VariableNames)), ...
 t_sec = double(T.time_s(:));   % 0,1,2,...
 code  = double(T.score(:));
 
-n_epoch = numel(code);
+n_epoch      = numel(code);
 dur_scores_s = n_epoch * S.epoch_sec;
 
 if verbose
@@ -138,14 +144,14 @@ end
 Smat = load(mat_file);
 
 % Candidate variable names for ACh ΔF/F
-cand_ach   = {'ach','ACh','ne','dff','DFF'};
-cand_fs_ach= {'ach_frequency','ne_frequency','fs_ach','Fs_ach','imaging_frequency'};
+cand_ach    = {'ach','ACh','ne','dff','DFF'};
+cand_fs_ach = {'ach_frequency','ne_frequency','fs_ach','Fs_ach','imaging_frequency'};
 
-ach = [];
+ach      = [];
 ach_name = '';
 for k = 1:numel(cand_ach)
     if isfield(Smat, cand_ach{k})
-        ach = Smat.(cand_ach{k});
+        ach      = Smat.(cand_ach{k});
         ach_name = cand_ach{k};
         break;
     end
@@ -155,11 +161,11 @@ if isempty(ach)
 end
 ach = double(ach(:));
 
-fs_ach = [];
-fs_name = '';
+fs_ach   = [];
+fs_name  = '';
 for k = 1:numel(cand_fs_ach)
     if isfield(Smat, cand_fs_ach{k})
-        fs_ach = Smat.(cand_fs_ach{k});
+        fs_ach  = Smat.(cand_fs_ach{k});
         fs_name = cand_fs_ach{k};
         break;
     end
@@ -175,18 +181,14 @@ if verbose
 end
 
 %% -------------------- Align ACh with scores ------------------
-% We assume ACh trace and scoring start at the same time.
-% Build a continuous time axis for ACh and map each sample
-% to the corresponding 1-Hz epoch.
-
 n_ach    = numel(ach);
 t_ach    = (0:n_ach-1)' / fs_ach;            % seconds from start
 sec_idx  = floor(t_ach / S.epoch_sec) + 1;   % epoch index for each sample
 valid    = sec_idx >= 1 & sec_idx <= n_epoch;
 
-ach      = ach(valid);
-sec_idx  = sec_idx(valid);
-state_vec= code(sec_idx);                    % state per ACh sample
+ach       = ach(valid);
+sec_idx   = sec_idx(valid);
+state_vec = code(sec_idx);                   % state per ACh sample
 
 if verbose
     fprintf('ACh duration total    : %.1f min\n', n_ach/fs_ach/60);
@@ -194,17 +196,6 @@ if verbose
 end
 
 %% -------------------- PART 1: Sleep transitions ----------------------
-% We define three state ONSETS:
-%   1) Wake onset:   any NREM/REM -> WK
-%   2) NREM onset:   WK or REM    -> NREM
-%   3) REM onset:    NREM         -> REM
-%
-% For each transition type we:
-%   - find all transitions on the 1-Hz score vector
-%   - extract peri-transition ACh segments
-%   - baseline-correct them
-%   - compute peak dF/F in a response window
-
 % Template for each transition result
 trans_template = struct( ...
     'name',       '', ...
@@ -215,7 +206,8 @@ trans_template = struct( ...
     'traces',     [], ...
     'mean',       [], ...
     'sem',        [], ...
-    'peaks',      []);
+    'peaks',      [], ...
+    'slopes',     [] );
 
 % Initialize empty array with correct fields
 OUT.transitions = repmat(trans_template,0,1);
@@ -223,8 +215,8 @@ OUT.transitions = repmat(trans_template,0,1);
 % Specify which transitions we want
 trans_specs = struct( ...
     'name',       {'Wake_onset','NREM_onset','REM_onset'}, ...
-    'from_codes', { [C.NREM C.REM],        [C.WK C.REM],   C.NREM }, ...
-    'to_code',    { C.WK,                  C.NREM,         C.REM });
+    'from_codes', { [C.NREM C.REM],         [C.WK C.REM],  C.NREM }, ...
+    'to_code',    { C.WK,                   C.NREM,        C.REM });
 
 for it = 1:numel(trans_specs)
     spec = trans_specs(it);
@@ -251,7 +243,8 @@ for it = 1:numel(trans_specs)
         OUT.transitions(end+1) = TOUT; 
         continue;
     end
-    
+
+    % ----------- NON-EMPTY CASE: compute everything ----------------
     % Extract peri-event ACh traces around each transition
     [t_rel, traces] = extract_peri_traces(ach, fs_ach, t_events, S.trans_win);
     
@@ -260,6 +253,9 @@ for it = 1:numel(trans_specs)
     
     % Compute peak dF/F in the response window (e.g. 0–60 s)
     peaks = compute_peaks(traces_bc, t_rel, S.resp_win);
+
+    % Compute slope per event in slope_win
+    slopes = compute_slopes(traces_bc, t_rel, slope_win);
     
     % Mean and SEM across events
     mean_tr = mean(traces_bc, 2);
@@ -276,6 +272,7 @@ for it = 1:numel(trans_specs)
     TOUT.mean          = mean_tr;
     TOUT.sem           = sem_tr;
     TOUT.peaks         = peaks;
+    TOUT.slopes        = slopes;
     
     OUT.transitions(end+1) = TOUT; 
     
@@ -285,18 +282,12 @@ for it = 1:numel(trans_specs)
 end
 
 %% -------- Plot transition analysis (similar to Fig 3.10) --------------
-% Layout: one row per transition type (Wake_onset, NREM_onset, REM_onset)
-% Columns:
-%   Left  = mean ± SEM peri-event ACh (baseline normalised)
-%   Right = peak dF/F for that transition type (points + mean±SEM)
-
 trans_fig = figure('Name','ACh transitions', ...
                    'Color','w', ...
                    'Visible','on');
 
 nT = numel(OUT.transitions);
 if nT == 0
-    % No transitions at all
     subplot(1,1,1);
     text(0.5,0.5,'No transitions found','HorizontalAlignment','center');
     axis off;
@@ -317,12 +308,10 @@ else
             se = TOUT.sem;
             t  = TOUT.t_rel(:);
 
-            % shaded SEM band
             xx = [t; flipud(t)];
             yy = [m-se; flipud(m+se)];
             fill(xx, yy, [0.8 0.8 0.8], 'EdgeColor','none'); hold on;
 
-            % mean trace
             plot(t, m, 'k','LineWidth',2);
 
             yline(0,'k:');
@@ -342,14 +331,12 @@ else
             text(0.5,0.5,'no peaks','HorizontalAlignment','center');
             axis off;
         else
-            % jittered scatter of individual peaks
             xj = 1 + 0.1*(rand(size(TOUT.peaks))-0.5);
             scatter(xj, TOUT.peaks, 35, 'k','filled'); hold on;
 
-            % mean ± SEM
             mu  = mean(TOUT.peaks);
-            sem = std(TOUT.peaks)/sqrt(numel(TOUT.peaks));
-            errorbar(1, mu, sem, 'k','LineWidth',2,'CapSize',10);
+            se  = std(TOUT.peaks)/sqrt(numel(TOUT.peaks));
+            errorbar(1, mu, se, 'k','LineWidth',2,'CapSize',10);
 
             xlim([0.5 1.5]);
             set(gca,'XTick',1,'XTickLabel',{'peak'});
@@ -374,24 +361,18 @@ saveas(trans_fig, trans_fig_file);
 OUT.files.trans_fig = trans_fig_file;
 
 %% -------------------- PART 2: ACh PSD in WK / NREM / REM ------------
-% We compute PSD of the slow ACh signal separately for each state:
-%   - detrend to remove DC
-%   - Welch PSD
-%   - keep frequencies between psd_fmin and psd_fmax (e.g. 0.01–0.15 Hz)
-%   - summary metrics: total power, peak freq, peak amplitude
-
-state_names  = {'Wake','NREM','REM'};
-state_codes  = [C.WK,  C.NREM, C.REM];
+state_names = {'Wake','NREM','REM'};
+state_codes = [C.WK,  C.NREM, C.REM];
 
 OUT.psd = struct();
 
 for i = 1:numel(state_names)
-    nm   = state_names{i};
+    nm     = state_names{i};
     code_i = state_codes(i);
 
-    mask = (state_vec == code_i);
+    mask      = (state_vec == code_i);
     sig_state = ach(mask);
-    Ls = numel(sig_state);
+    Ls        = numel(sig_state);
 
     if Ls == 0
         if verbose
@@ -416,12 +397,37 @@ for i = 1:numel(state_names)
     OUT.psd.(nm) = PSD;
 end
 
-% -------- Plot PSDs + separate boxplots for metrics -------------------
+%% -------------------- State-wise ACh slope -------------------
+OUT.state_slopes = struct();
+
+dt   = 1/fs_ach;
+dach = gradient(ach) / dt;     % numerical derivative (dF/F per s)
+
+for i = 1:numel(state_names)
+    nm     = state_names{i};
+    code_i = state_codes(i);
+
+    mask      = (state_vec == code_i);
+    slopes_i  = dach(mask);
+    nMask     = nnz(mask);
+
+    if nMask < 5
+        OUT.state_slopes.(nm).mean = NaN;
+        OUT.state_slopes.(nm).sem  = NaN;
+        OUT.state_slopes.(nm).n    = nMask;
+    else
+        OUT.state_slopes.(nm).mean = mean(slopes_i,'omitnan');
+        OUT.state_slopes.(nm).sem  = std(slopes_i,'omitnan') / sqrt(nMask);
+        OUT.state_slopes.(nm).n    = nMask;
+    end
+end
+
+%% -------- Plot PSDs + simple summary metrics ----------------
 psd_fig = figure('Name','ACh PSD per state','Color','w','Visible','on');
 
 % Row 1: PSD curves for each state
 for i = 1:numel(state_names)
-    nm = state_names{i};
+    nm  = state_names{i};
     PSD = OUT.psd.(nm);
 
     subplot(2,3,i);
@@ -430,7 +436,6 @@ for i = 1:numel(state_names)
             'HorizontalAlignment','center');
         axis off;
     else
-        % normalize to max for plotting (A.U.) but keep raw in OUT
         psd_norm = PSD.psd / max(PSD.psd);
         plot(PSD.f, psd_norm, 'k','LineWidth',1.5);
         xlabel('Frequency (Hz)');
@@ -442,7 +447,6 @@ for i = 1:numel(state_names)
     end
 end
 
-% Row 2: three separate boxplots: power, peak freq, peak amp
 powers = [OUT.psd.Wake.band_power, OUT.psd.NREM.band_power, OUT.psd.REM.band_power];
 pfreqs = [OUT.psd.Wake.peak_freq,  OUT.psd.NREM.peak_freq,  OUT.psd.REM.peak_freq];
 pamps  = [OUT.psd.Wake.peak_amp,   OUT.psd.NREM.peak_amp,   OUT.psd.REM.peak_amp];
@@ -481,7 +485,72 @@ end
 psd_fig_file = fullfile(S.out_dir, [base_psd '.png']);
 saveas(psd_fig, psd_fig_file);
 OUT.files.psd_fig = psd_fig_file;
+%% -------------------- Slope plots (transitions + states) -------------
+slope_fig = figure('Name','ACh slopes','Color','w','Visible','on');
 
+nT = numel(OUT.transitions);
+
+% ---------- ROW 1: per-transition slopes (scatter + mean ± SEM) ------
+for it = 1:nT
+    TOUT = OUT.transitions(it);
+    subplot(2, max(nT,3), it);  % keep at least 3 columns so layout isn't crazy
+
+    if TOUT.n_events == 0 || isempty(TOUT.slopes)
+        text(0.5,0.5,[TOUT.name ' (no events)'], ...
+            'HorizontalAlignment','center');
+        axis off;
+    else
+        xj = 1 + 0.1*(rand(size(TOUT.slopes))-0.5);
+        scatter(xj, TOUT.slopes, 30, 'k','filled'); hold on;
+
+        mu  = mean(TOUT.slopes, 'omitnan');
+        se  = std(TOUT.slopes, 'omitnan') / sqrt(sum(~isnan(TOUT.slopes)));
+        errorbar(1, mu, se, 'k','LineWidth',1.5,'CapSize',8);
+
+        xlim([0.5 1.5]);
+        set(gca,'XTick',1,'XTickLabel',{'slope'});
+        ylabel('Slope (dF/F per s)');
+        title(strrep(TOUT.name,'_',' '));
+        box off;
+    end
+end
+
+% ---------- ROW 2: state-wise mean slopes (Wake / NREM / REM) --------
+subplot(2, max(nT,3), max(nT,3) + 1 : 2*max(nT,3));  % span entire second row
+hold on;
+
+state_names = {'Wake','NREM','REM'};
+mu_s = nan(1,numel(state_names));
+se_s = nan(1,numel(state_names));
+
+for i = 1:numel(state_names)
+    nm = state_names{i};
+    if isfield(OUT.state_slopes, nm)
+        mu_s(i) = OUT.state_slopes.(nm).mean;
+        se_s(i) = OUT.state_slopes.(nm).sem;
+    end
+end
+
+x = 1:numel(state_names);
+bar(x, mu_s, 'FaceColor',[0.6 0.6 0.6]); 
+errorbar(x, mu_s, se_s, 'k','LineStyle','none','CapSize',8);
+
+set(gca,'XTick',x,'XTickLabel',state_names);
+ylabel('Slope (dF/F per s)');
+title('Mean ACh slope by state');
+box off;
+
+sgtitle(sprintf('%s – %s : ACh slopes', S.mouse_id, S.session));
+
+% Save slope figure
+if isempty(S.out_prefix)
+    base_slope = sprintf('AChSlopes_%s_%s', safe_str(S.mouse_id), safe_str(S.session));
+else
+    base_slope = sprintf('%s_AChSlopes', safe_str(S.out_prefix));
+end
+slope_fig_file = fullfile(S.out_dir, [base_slope '.png']);
+saveas(slope_fig, slope_fig_file);
+OUT.files.slope_fig = slope_fig_file;
 
 %% -------------------- Save metrics to CSV --------------------
 if isempty(S.out_prefix)
@@ -491,14 +560,11 @@ else
 end
 csv_file = fullfile(S.out_dir, [base_csv '.csv']);
 
-% -------- Collect per-transition peak summaries into a table ----------
-nT = numel(OUT.transitions);   % number of transition types (Wake_onset, NREM_onset, REM_onset)
+nT = numel(OUT.transitions);
 
 if nT == 0
-    % No transitions at all → make an empty table
     tbl = table();
 else
-    % Basic columns for each transition type
     trans_names = {OUT.transitions.name}';
     n_events    = arrayfun(@(x)x.n_events, OUT.transitions)';
     peak_means  = arrayfun(@(x) iff(x.n_events>0 && ~isempty(x.peaks), ...
@@ -506,15 +572,27 @@ else
     peak_sems   = arrayfun(@(x) iff(x.n_events>0 && ~isempty(x.peaks), ...
                                     std(x.peaks)/sqrt(x.n_events), NaN), OUT.transitions)';
 
-    % Repeat mouse / session for each row
+    slope_means = arrayfun(@(x) iff(x.n_events>0 && isfield(x,'slopes') ...
+                                    && ~isempty(x.slopes), ...
+                                    mean(x.slopes,'omitnan'), NaN), ...
+                           OUT.transitions)';
+    slope_sems  = arrayfun(@(x) iff(x.n_events>0 && isfield(x,'slopes') ...
+                                    && ~isempty(x.slopes), ...
+                                    std(x.slopes,'omitnan')/sqrt(x.n_events), NaN), ...
+                           OUT.transitions)';
+
     mouse_col = repmat({S.mouse_id}, nT, 1);
     sess_col  = repmat({S.session},  nT, 1);
 
     tbl = table(mouse_col, sess_col, ...
-                trans_names, n_events, peak_means, peak_sems, ...
-        'VariableNames', {'mouse','session','transition','n_events','peak_mean','peak_sem'});
+                trans_names, n_events, ...
+                peak_means, peak_sems, ...
+                slope_means, slope_sems, ...
+       'VariableNames', {'mouse','session','transition','n_events', ...
+                         'peak_mean','peak_sem', ...
+                         'slope_mean','slope_sem'});
 
-    % Add NREM PSD metrics as extra columns (store them in the first row)
+    % NREM PSD metrics in first row
     tbl.ACh_NREM_PSD_power    = NaN(nT,1);
     tbl.ACh_NREM_PSD_peakfreq = NaN(nT,1);
     tbl.ACh_NREM_PSD_peakamp  = NaN(nT,1);
@@ -525,9 +603,24 @@ else
         tbl.ACh_NREM_PSD_peakfreq(1) = OUT.psd.NREM.peak_freq;
         tbl.ACh_NREM_PSD_peakamp(1)  = OUT.psd.NREM.peak_amp;
     end
+
+    % state-wise mean ACh slope (Wake, NREM, REM) in first row
+    tbl.ACh_slope_Wake = NaN(nT,1);
+    tbl.ACh_slope_NREM = NaN(nT,1);
+    tbl.ACh_slope_REM  = NaN(nT,1);
+
+    if isfield(OUT,'state_slopes')
+        if isfield(OUT.state_slopes,'Wake')
+            tbl.ACh_slope_Wake(1) = OUT.state_slopes.Wake.mean;
+        end
+        if isfield(OUT.state_slopes,'NREM')
+            tbl.ACh_slope_NREM(1) = OUT.state_slopes.NREM.mean;
+        end
+        if isfield(OUT.state_slopes,'REM')
+            tbl.ACh_slope_REM(1)  = OUT.state_slopes.REM.mean;
+        end
+    end
 end
-
-
 
 writetable(tbl, csv_file);
 OUT.files.metrics_csv = csv_file;
@@ -556,6 +649,36 @@ if verbose
     fprintf('Done.\n\n');
 end
 
-
 OUT.success = true;
-end 
+end
+
+%% ======================= Helper: compute_slopes =======================
+function slopes = compute_slopes(traces, t_rel, win)
+% Compute per-event linear slope of baseline-corrected traces
+% within a specified time window WIN = [t_start t_end] (s)
+%
+% traces: [nTime x nEvents]
+% t_rel : [nTime x 1] time vector (s)
+
+if isempty(traces)
+    slopes = [];
+    return;
+end
+
+t    = t_rel(:);
+mask = (t >= win(1)) & (t <= win(2));
+t_win = t(mask);
+
+nEv    = size(traces,2);
+slopes = nan(nEv,1);
+
+for j = 1:nEv
+    y = traces(mask,j);
+    if all(isnan(y)) || numel(y) < 3
+        slopes(j) = NaN;
+        continue;
+    end
+    p = polyfit(t_win, y, 1);     % y = p(1)*t + p(2)
+    slopes(j) = p(1);             % slope (dF/F per second)
+end
+end
