@@ -1,0 +1,17 @@
+Sleep architecture summary
+Source CSV : /Users/margaridaseabra/15.11scores/20251025-ambtemp-mouse12-WT_scored_scores_1Hz.csv
+Output dir : /Users/margaridaseabra/sleep_app_ach_warm/Sleep Architecture Analysis/group_out
+Hours      : 9
+Include MA : 0
+MA bouts   : 53  | MA seconds: 361
+MA rule    : Wake bouts ≤ 15 s reclassified to MA
+
+Overall metrics:
+  WK    bouts=  24  total=  10665s  mean= 444.4s
+  NREM  bouts=  76  total=  17277s  mean= 227.3s
+  REM   bouts=  25  total=   3187s  mean= 127.5s
+
+Files:
+  /Users/margaridaseabra/sleep_app_ach_warm/Sleep Architecture Analysis/group_out/20251025-ambtemp-mouse12-WT_scored_arch_per_hour.csv
+  /Users/margaridaseabra/sleep_app_ach_warm/Sleep Architecture Analysis/group_out/20251025-ambtemp-mouse12-WT_scored_arch_overall.csv
+  /Users/margaridaseabra/sleep_app_ach_warm/Sleep Architecture Analysis/group_out/20251025-ambtemp-mouse12-WT_scored_arch_runs.csv
