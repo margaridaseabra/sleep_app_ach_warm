@@ -1,4 +1,4 @@
 % Example for one mouse
-eeg_each_band('/Users/margaridaseabra/Library/CloudStorage/OneDrive-UniversityofCopenhagen/scored files/20251007_mouse4_filtered_50Hznotch.mat', '/Users/margaridaseabra/Library/CloudStorage/OneDrive-UniversityofCopenhagen/scored files/mouse4_ambtemp_scores_tt.mat', '/Users/margaridaseabra/Library/CloudStorage/OneDrive-UniversityofCopenhagen/scored files', 'mouse4-ambtemp');
+eeg_each_band('/Users/margaridaseabra/signalnotscored/20251001-baseline-mouse1.mat', '/Users/margaridaseabra/15.11scores/20251001-baseline-mouse1-APP_scored_scores_tt.mat', '/Users/margaridaseabra/sleep_app_ach_warm/EEG Power Spectral Analysis', 'mouse1-baseline');
 
 % Do this for all your mice (automate via loop if needed)

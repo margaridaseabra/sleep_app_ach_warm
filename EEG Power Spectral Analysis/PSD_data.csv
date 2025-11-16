@@ -1,0 +1,2 @@
+MouseID,Wake_Delta_dB,Wake_Theta_dB,Wake_Sigma_dB,Wake_Beta_dB,Wake_lGamma1_dB,Wake_lGamma2_dB,Wake_hGamma_dB,NREM_Delta_dB,NREM_Theta_dB,NREM_Sigma_dB,NREM_Beta_dB,NREM_lGamma1_dB,NREM_lGamma2_dB,NREM_hGamma_dB,REM_Delta_dB,REM_Theta_dB,REM_Sigma_dB,REM_Beta_dB,REM_lGamma1_dB,REM_lGamma2_dB,REM_hGamma_dB
+mouse1-baseline,-92.75494,-92.20148,-95.44755,-93.97698,-96.53609,-102.0093,-98.13704,-92.61401,-91.62964,-93.97705,-92.98949,-96.91387,-102.9303,-98.65601,-94.50257,-89.43175,-93.83258,-92.5026,-96.27625,-101.7869,-97.95491

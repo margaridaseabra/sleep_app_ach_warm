@@ -7,8 +7,8 @@ function eeg_each_band(eegFile, scoreFile, outputDir, mouseID)
     eegData = load(eegFile);
     scoreData = load(scoreFile);
 
-    EEG = eegData.filtered_signal;
-    Fs = eegData.Fs;
+    EEG = eegData.eeg;
+    Fs = eegData.eeg_frequency;
     TT = scoreData.TT;
     C = scoreData.C;
     score = TT{:,1};

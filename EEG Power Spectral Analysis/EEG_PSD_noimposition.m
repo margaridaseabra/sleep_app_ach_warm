@@ -1,8 +1,8 @@
 % EEG PSD Analysis per State (Unbiased, Data-Driven)
 
 % ---- Setup ----
-eegFile = '/Users/margaridaseabra/Library/CloudStorage/OneDrive-UniversityofCopenhagen/scored files/20251002-mouse2-baseline_test.mat';
-scoreFile = '/Users/margaridaseabra/Library/CloudStorage/OneDrive-UniversityofCopenhagen/scored files/mouse2_base_scores_tt.mat';
+eegFile = '/Users/margaridaseabra/signalnotscored/20251001-baseline-mouse1.mat';
+scoreFile = '/Users/margaridaseabra/15.11scores/20251001-baseline-mouse1-APP_scored_scores_tt.mat';
 
 % Load data
 eegData = load(eegFile);
@@ -76,7 +76,6 @@ for s = 1:length(stateNames)
     title(['PSD - ' stateName]);
     xlim([0 100]);
     saveas(fig, fullfile(outputFolder, [stateName '_PSD.png']));
-    close(fig);
 end
 
 % ---- Overlay PSD Comparison ----
@@ -95,6 +94,5 @@ title('PSD Comparison Across Sleep States');
 xlim([0 100]);
 grid on;
 saveas(fig, fullfile(outputFolder, 'PSD_Overlay.png'));
-close(fig);
 
 disp('Unbiased EEG PSD analysis complete.');
