@@ -261,6 +261,18 @@ else
         'VariableNames',{'start_s','end_s','dur_s','peak_amp','peak_z','state'});
 end
 OUT.bursts = bursts_tbl;
+% --------------------------------------------------------------
+% EXCLUDE MA BURSTS (micro-arousals) FROM ALL METRICS
+% --------------------------------------------------------------
+if isfield(C,'MA')
+    isMA_burst = (OUT.bursts.state == C.MA);
+    nMA = nnz(isMA_burst);
+    if nMA > 0 && verbose
+        fprintf('  Excluding %d EMG bursts occurring in MA.\n', nMA);
+    end
+    OUT.bursts = OUT.bursts(~isMA_burst,:);
+end
+
 
 %% -------------------- Bout-level metrics ----------------------
 [st_b, en_b] = runs_from_codes(code);
@@ -282,6 +294,11 @@ for i = 1:n_bouts
         case C.REM,  state_name{i} = 'REM';
         case C.MA,   state_name{i} = 'MA';
         otherwise,   state_name{i} = sprintf('code%d',s_code);
+        % skip MA bouts entirely
+        if isfield(C,'MA') && s_code == C.MA
+            continue;
+        end
+
     end
 
     start_b_s(i) = t_sec(st_b(i));

@@ -1,4 +1,4 @@
-function make_group_plots(OVERALL, PERHOUR, out_dir, varargin)
+function make_group_plots_outdated(OVERALL, PERHOUR, out_dir, varargin)
 % make_group_plots with outlier overlays (per-mouse) and SEM bars.
 % Optional name-value:
 %   'label_outliers' (false) : add mouse labels next to red dots
