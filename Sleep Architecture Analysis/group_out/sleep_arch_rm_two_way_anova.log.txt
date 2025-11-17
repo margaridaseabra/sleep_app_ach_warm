@@ -1,0 +1,16 @@
+Repeated-measures 2-way ANOVA on % time in each state
+Subject = mouse | Within: Condition | Between: Genotype
+Conditions: baseline, ambtemp, drugs (where available)
+
+State: wk
+  Repeated measures cols: baseline, ambtemp, drugs
+  (see ranova / multcompare outputs in STATS.wk)
+
+State: nrem
+  Repeated measures cols: baseline, ambtemp, drugs
+  (see ranova / multcompare outputs in STATS.nrem)
+
+State: rem
+  Repeated measures cols: baseline, ambtemp, drugs
+  (see ranova / multcompare outputs in STATS.rem)
+

@@ -79,8 +79,15 @@ function plot_bandpower_per_condition(csvFile, outDir)
                 end
             end
 
-            bh = bar(M, 'grouped');  %#ok<NASGU> % grouped bars
+            % Fixed genotype colours
+            COL_WT  = [0.6 0.6 0.6];           % grey
+            COL_APP = [0.392 0.584 0.929];     % cornflower blue-ish
 
+            bh = bar(M, 'grouped');  % WT vs APP per band
+
+            % Apply colours: assume genotypes = ["WT","APP"];
+            bh(1).FaceColor = COL_WT;   % WT
+            bh(2).FaceColor = COL_APP;  % APP
             % Error bars
             for gi = 1:ng
                 x = bh(gi).XEndPoints;

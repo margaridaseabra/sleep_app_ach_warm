@@ -32,6 +32,9 @@ REM,27,1907,70.6296296296296,20251011-baseline-mouse3-APP_scored_scores_1Hz.csv,
 WK,64,12268,191.6875,20251012-baseline-mouse12-WT_scored_scores_1Hz.csv,20251012,baseline,mouse12,WT
 NREM,215,14674,68.2511627906977,20251012-baseline-mouse12-WT_scored_scores_1Hz.csv,20251012,baseline,mouse12,WT
 REM,34,3430,100.882352941176,20251012-baseline-mouse12-WT_scored_scores_1Hz.csv,20251012,baseline,mouse12,WT
+WK,64,12047,188.234375,20251013-ambtemp-mouse2-WT_scored_scores_1Hz.csv,20251013,ambtemp,mouse2,WT
+NREM,227,14898,65.6299559471366,20251013-ambtemp-mouse2-WT_scored_scores_1Hz.csv,20251013,ambtemp,mouse2,WT
+REM,39,2976,76.3076923076923,20251013-ambtemp-mouse2-WT_scored_scores_1Hz.csv,20251013,ambtemp,mouse2,WT
 WK,66,13612,206.242424242424,20251013-baseline-mouse11-WT_scored_scores_1Hz.csv,20251013,baseline,mouse11,WT
 NREM,161,14264,88.5962732919255,20251013-baseline-mouse11-WT_scored_scores_1Hz.csv,20251013,baseline,mouse11,WT
 REM,27,2185,80.9259259259259,20251013-baseline-mouse11-WT_scored_scores_1Hz.csv,20251013,baseline,mouse11,WT
@@ -56,6 +59,6 @@ REM,32,3119,97.46875,20251024-drugs-mouse10-APP_scored_scores_1Hz.csv,20251024,d
 WK,24,10665,444.375,20251025-ambtemp-mouse12-WT_scored_scores_1Hz.csv,20251025,ambtemp,mouse12,WT
 NREM,76,17277,227.328947368421,20251025-ambtemp-mouse12-WT_scored_scores_1Hz.csv,20251025,ambtemp,mouse12,WT
 REM,25,3187,127.48,20251025-ambtemp-mouse12-WT_scored_scores_1Hz.csv,20251025,ambtemp,mouse12,WT
-WK,52,12363,237.75,20251926-drugs-mouse12-WT_scored_scores_1Hz.csv,20251926,drugs,mouse12,WT
-NREM,163,15152,92.9570552147239,20251926-drugs-mouse12-WT_scored_scores_1Hz.csv,20251926,drugs,mouse12,WT
-REM,30,3130,104.333333333333,20251926-drugs-mouse12-WT_scored_scores_1Hz.csv,20251926,drugs,mouse12,WT
+WK,52,12363,237.75,20251026-drugs-mouse12-WT_scored_scores_1Hz.csv,20251026,drugs,mouse12,WT
+NREM,163,15152,92.9570552147239,20251026-drugs-mouse12-WT_scored_scores_1Hz.csv,20251026,drugs,mouse12,WT
+REM,30,3130,104.333333333333,20251026-drugs-mouse12-WT_scored_scores_1Hz.csv,20251026,drugs,mouse12,WT

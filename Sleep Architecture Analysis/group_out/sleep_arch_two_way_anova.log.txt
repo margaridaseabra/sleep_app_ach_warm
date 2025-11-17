@@ -1,0 +1,18 @@
+Two-way ANOVA on % time in each state
+Factors: Genotype (WT vs APP) × Condition (baseline/ambtemp/drugs)
+
+State: wk
+  p(Genotype)    = 0.3712
+  p(Condition)   = 0.5132
+  p(Interaction) = 0.1273
+
+State: nrem
+  p(Genotype)    = 0.2912
+  p(Condition)   = 0.5936
+  p(Interaction) = 0.1123
+
+State: rem
+  p(Genotype)    = 0.9778
+  p(Condition)   = 0.8212
+  p(Interaction) = 0.3326
+

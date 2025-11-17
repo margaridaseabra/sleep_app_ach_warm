@@ -13,15 +13,14 @@ function plot_group_psd_curves(baseOutDir)
     end
 
     % ------------ Genotypes & colours ------------
-    % Folder names:
     genotypes = {'WT','APP'};   % change here if your folders are different
 
     % Labels for legend:
     labelMap = struct('WT','WT', 'APP','APP/PS1');
 
-    % Colours (grey = WT, orange = APP)
-    colMap.WT  = [0.3 0.3 0.3];
-    colMap.APP = [1.0 0.6 0.0];
+    % Colours (WT grey, APP cornflower blue)
+    colMap.WT  = [0.6 0.6 0.6];
+    colMap.APP = [0.392 0.584 0.929];
 
     % States to plot
     states = {'Wake','NREM','REM'};
@@ -151,6 +150,9 @@ function plot_group_psd_curves(baseOutDir)
                 end
             end
         end
+
+        % === NEW: big title with condition name ===
+        sgtitle(sprintf('Condition: %s', cond), 'FontWeight','bold');
 
         % --------- Save figure for this condition ----------
         safeCond = regexprep(conditions{ci}, '[^a-zA-Z0-9]', '');

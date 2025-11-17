@@ -27,8 +27,8 @@ function plot_sigma_modulation_by_condition(outRoot)
 
     % Genotypes and colours
     genotypes = ["WT","APP"];
-    colMap.WT  = [0.3 0.3 0.3];
-    colMap.APP = [1.0 0.6 0.0];
+    colMap.WT  = [0.6 0.6 0.6];
+    colMap.APP = [0.392 0.584 0.929];
 
     % Conditions (keep original order)
     [~, idxFirst] = unique(tbl.Condition, 'stable');
@@ -142,13 +142,20 @@ function plot_sigma_modulation_by_condition(outRoot)
                 end
             end
 
-            % Bars
-            bh = bar(1:numel(genotypes), M); %#ok<NASGU>
+            % Bars (WT = grey, APP = cornflower blue)
+            bh = bar(1:numel(genotypes), M);
             set(gca,'XTick',1:numel(genotypes), ...
                     'XTickLabel', genotypes);
+
+            bh.FaceColor = 'flat';
+            bh.CData = [
+                colMap.WT;   % bar at x=1 (WT)
+                colMap.APP;  % bar at x=2 (APP)
+            ];
+
             % Error bars
             errorbar(1:numel(genotypes), M, E, 'k', ...
-                     'LineStyle','none','LineWidth',1);
+                'LineStyle','none','LineWidth',1);
 
             % Scatter individual mice
             for gi = 1:numel(genotypes)
@@ -160,11 +167,14 @@ function plot_sigma_modulation_by_condition(outRoot)
             title(titles{m});
             box off; grid on;
         end
+        sgtitle(sprintf('Condition: %s', cond), 'FontWeight','bold');
 
         % --------- Save figure ----------
         safeCond = regexprep(cond, '[^a-zA-Z0-9]', '');
         outPng   = fullfile(outRoot, sprintf('SigmaMod_%s.png', safeCond));
         saveas(fig, outPng);
         fprintf('Saved sigma modulation figure for %s: %s\n', cond, outPng);
+        
+
     end
 end

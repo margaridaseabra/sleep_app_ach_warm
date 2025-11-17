@@ -31,9 +31,10 @@ if isempty(genoMut)
 end
 genoMut = genoMut(1);   % assume one mutant group (APP/PS1)
 
-% colours similar to thesis
-COL_WT  = [0.4 0.4 0.4];   % grey
-COL_APP = [1.0 0.5 0.0];   % orange
+% colours (WT grey, APP cornflower blue)
+COL_WT  = [0.6 0.6 0.6];           % grey
+COL_APP = [0.392 0.584 0.929];     % cornflower blue
+
 
 figure('Name',sprintf('%s – %s',big_title,trans_name),'Color','w');
 

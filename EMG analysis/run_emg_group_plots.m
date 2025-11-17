@@ -31,8 +31,8 @@ end
 genoMut    = genoMut(1);
 geno_order = [genoMut genoWT];
 
-COL_APP = [1.0 0.5 0.0];
-COL_WT  = [0.4 0.4 0.4];
+COL_APP = [0.6 0.6 0.6];
+COL_WT  = [0.392 0.584 0.929];
 color_for = @(g) (strcmpi(g,genoWT)*COL_WT) + (~strcmpi(g,genoWT)*COL_APP);
 
 % ------------- burts per minute -----------------------------------------

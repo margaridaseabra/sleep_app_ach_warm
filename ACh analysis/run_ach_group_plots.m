@@ -37,9 +37,11 @@ end
 genoMut = genoMut(1);          % assume a single mutant group (APP/PS1)
 geno_order = [genoMut genoWT]; % for bars: APP first, WT second
 
-% Colours (match paper style)
-COL_APP = [1.0 0.5 0.0];       % orange
-COL_WT  = [0.4 0.4 0.4];       % grey
+% Colours (WT grey, APP cornflower blue)
+COL_WT  = [0.6 0.6 0.6];           % grey
+COL_APP = [0.392 0.584 0.929];     % cornflower blue
+
+
 
 % simple function to pick colour by genotype name
 color_for = @(g) (strcmpi(g,genoWT) * COL_WT) + ...

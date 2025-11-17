@@ -170,8 +170,13 @@ end
 if ~isempty(META), writetable(META, meta_csv); end
 
 % ----------------- plots (only if we have data) -----------------
+% ----------------- plots (only if we have data) -----------------
+
 if ~isempty(rows_overall) && ~isempty(rows_perhr)
-    make_group_plots(rows_overall, rows_perhr, S.out_dir);
+    STATS = run_sleep_arch_rm_anova(rows_overall, S.out_dir);
+    save(fullfile(S.out_dir,'sleep_arch_rm_two_way_anova.mat'), 'STATS');
+
+    make_group_plots_new(rows_overall, rows_perhr, S.out_dir);
 end
 
 % ----------------- return -----------------
@@ -181,11 +186,3 @@ OUT = struct('overall',rows_overall,'per_hour',rows_perhr,'meta',META, ...
                                                 'meta_csv',meta_csv));
 fprintf('✅ Group run finished. Outputs in: %s\n', S.out_dir);
 end
-
-% ===================== helpers =====================
-
-
-
-
-
-

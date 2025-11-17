@@ -27,8 +27,8 @@ function plot_theta_modulation_by_condition(outRoot)
 
     % Genotypes and colours (same as sigma plots)
     genotypes = ["WT","APP"];        % change if needed
-    colMap.WT  = [0.3 0.3 0.3];
-    colMap.APP = [1.0 0.6 0.0];
+    colMap.WT  = [0.6 0.6 0.6];
+    colMap.APP = [0.392 0.584 0.929];
 
     % Conditions in original order
     [~, idxFirst] = unique(tbl.Condition, 'stable');
@@ -141,14 +141,23 @@ function plot_theta_modulation_by_condition(outRoot)
                     gIdx = [gIdx; gi*ones(numel(vals),1)]; %#ok<AGROW>
                 end
             end
-
-            bh = bar(1:numel(genotypes), M); %#ok<NASGU>
+            % Bars (WT = grey, APP = cornflower blue)
+            bh = bar(1:numel(genotypes), M);
             set(gca,'XTick',1:numel(genotypes), ...
                     'XTickLabel', genotypes);
 
-            errorbar(1:numel(genotypes), M, E, 'k', ...
-                     'LineStyle','none','LineWidth',1);
+            bh.FaceColor = 'flat';
+            bh.CData = [
+                colMap.WT;   % bar at x = 1 (WT)
+                colMap.APP;  % bar at x = 2 (APP)
+            ];
 
+            % Error bars
+            errorbar(1:numel(genotypes), M, E, 'k', ...
+                    'LineStyle','none','LineWidth',1);
+
+            
+            
             % scatter individual mice
             for gi = 1:numel(genotypes)
                 jitter = (rand(sum(gIdx==gi),1)-0.5)*0.15;
@@ -159,6 +168,8 @@ function plot_theta_modulation_by_condition(outRoot)
             title(titles{m});
             box off; grid on;
         end
+        % Big title with condition name
+sgtitle(sprintf('Condition: %s', cond), 'FontWeight','bold');
 
         % --------- Save figure ----------
         safeCond = regexprep(cond, '[^a-zA-Z0-9]', '');

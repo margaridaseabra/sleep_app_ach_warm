@@ -10,6 +10,7 @@ file,date,condition,mouse,genotype,ok
 20251009-ambtemp-mouse3-APP_scored_scores_1Hz.csv,20251009,ambtemp,mouse3,APP,1
 20251011-baseline-mouse3-APP_scored_scores_1Hz.csv,20251011,baseline,mouse3,APP,1
 20251012-baseline-mouse12-WT_scored_scores_1Hz.csv,20251012,baseline,mouse12,WT,1
+20251013-ambtemp-mouse2-WT_scored_scores_1Hz.csv,20251013,ambtemp,mouse2,WT,1
 20251013-baseline-mouse11-WT_scored_scores_1Hz.csv,20251013,baseline,mouse11,WT,1
 20251014-ambtemp-mouse11-WT_scored_scores_1Hz.csv,20251014,ambtemp,mouse11,WT,1
 20251022-drugs-mouse1-APP_scored_scores_1Hz.csv,20251022,drugs,mouse1,APP,1
@@ -18,4 +19,4 @@ file,date,condition,mouse,genotype,ok
 20251023-drugs-mouse3-APP_scored_scores_1Hz.csv,20251023,drugs,mouse3,APP,1
 20251024-drugs-mouse10-APP_scored_scores_1Hz.csv,20251024,drugs,mouse10,APP,1
 20251025-ambtemp-mouse12-WT_scored_scores_1Hz.csv,20251025,ambtemp,mouse12,WT,1
-20251926-drugs-mouse12-WT_scored_scores_1Hz.csv,20251926,drugs,mouse12,WT,1
+20251026-drugs-mouse12-WT_scored_scores_1Hz.csv,20251026,drugs,mouse12,WT,1
