@@ -228,6 +228,14 @@ catch ME
         'Failed to make percent-of-recording genotype×condition plots: %s', ...
         ME.message);
 end
+%% ---------- NEW: mean bout duration by 3 h windows (per state) ----------
+try
+    make_bout_duration_window_plots(PERHOUR2, out_dir, COL_WT, COL_APP, OPT);
+catch ME
+    warning(ME.identifier, 'Failed to make bout-duration window plots: %s', ME.message);
+end
+
+
 end
 
 % ================= helpers =================
@@ -283,29 +291,7 @@ for m = 1:numel(metric_list)
 end
 end
 
-function G = agg_mean_sem(T, groupVars, valueVar)
-vals = double(T.(valueVar));
-gv = cell(1, numel(groupVars));
-for k = 1:numel(groupVars)
-    v = T.(groupVars{k});
-    if ischar(v) || isstring(v) || iscellstr(v)
-        gv{k} = string(v);
-    else
-        gv{k} = v;
-    end
-end
-keysOut = cell(1, numel(groupVars));
-[Gid, keysOut{:}] = findgroups(gv{:});
-m  = splitapply(@(x) mean(x,'omitnan'), vals, Gid);
-sd = splitapply(@(x) std(x,'omitnan'),  vals, Gid);
-n  = splitapply(@(x) sum(~isnan(x)),    vals, Gid);
-sem = sd ./ max(sqrt(n), 1);
-G = table();
-for k = 1:numel(groupVars)
-    G.(groupVars{k}) = keysOut{k};
-end
-G.mean = m; G.sem = sem;
-end
+
 
 function s = mad_n(x)
 m = median(x,'omitnan');
@@ -523,4 +509,62 @@ switch char(st)
     otherwise
         lbl = char(st);
 end
+end
+function s = p_to_stars(p)
+% Convert p-value to significance stars.
+if isempty(p) || isnan(p)
+    s = 'n.s.';
+elseif p < 0.0001
+    s = '****';
+elseif p < 0.001
+    s = '***';
+elseif p < 0.01
+    s = '**';
+elseif p < 0.05
+    s = '*';
+else
+    s = 'n.s.';
+end
+end
+
+function G = agg_mean_sem(T, groupVars, valueVar)
+% AGG_MEAN_SEM
+% -------------------------------------------------------------------------
+% Group table T by groupVars and compute:
+%   - mean of valueVar
+%   - SEM (standard error of the mean) of valueVar
+% Returns a table with one row per group + columns 'mean' and 'sem'.
+% -------------------------------------------------------------------------
+
+% extract values
+vals = double(T.(valueVar));
+
+% build grouping variables
+gv = cell(1, numel(groupVars));
+for k = 1:numel(groupVars)
+    v = T.(groupVars{k});
+    if ischar(v) || isstring(v) || iscellstr(v)
+        gv{k} = string(v);
+    else
+        gv{k} = v;
+    end
+end
+
+% group IDs + keys
+keysOut = cell(1, numel(groupVars));
+[Gid, keysOut{:}] = findgroups(gv{:});
+
+% mean / SD / n / SEM
+m  = splitapply(@(x) mean(x,'omitnan'), vals, Gid);
+sd = splitapply(@(x) std(x,'omitnan'),  vals, Gid);
+n  = splitapply(@(x) sum(~isnan(x)),    vals, Gid);
+sem = sd ./ max(sqrt(n), 1);
+
+% pack into table
+G = table();
+for k = 1:numel(groupVars)
+    G.(groupVars{k}) = keysOut{k};
+end
+G.mean = m;
+G.sem  = sem;
 end

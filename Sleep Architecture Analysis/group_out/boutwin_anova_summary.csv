@@ -1,0 +1,10 @@
+state,condition,p_genotype,p_window,p_interaction
+WK,baseline,NaN,NaN,NaN
+WK,ambtemp,NaN,NaN,NaN
+WK,drugs,NaN,NaN,NaN
+NREM,baseline,NaN,NaN,NaN
+NREM,ambtemp,NaN,NaN,NaN
+NREM,drugs,NaN,NaN,NaN
+REM,baseline,NaN,NaN,NaN
+REM,ambtemp,NaN,NaN,NaN
+REM,drugs,NaN,NaN,NaN

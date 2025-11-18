@@ -176,6 +176,10 @@ if ~isempty(rows_overall) && ~isempty(rows_perhr)
     STATS = run_sleep_arch_rm_anova(rows_overall, S.out_dir);
     save(fullfile(S.out_dir,'sleep_arch_rm_two_way_anova.mat'), 'STATS');
 
+    % NEW: bout-duration window stats (APP vs WT, manipulation vs rest)
+    BOUTSTATS = run_bout_window_stats(rows_perhr, S.out_dir);
+    save(fullfile(S.out_dir,'boutwin_stats.mat'), 'BOUTSTATS');
+
     make_group_plots_new(rows_overall, rows_perhr, S.out_dir);
 end
 
