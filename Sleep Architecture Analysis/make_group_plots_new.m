@@ -32,6 +32,30 @@ OVERALL2 = OVERALL;
 OVERALL2.total_min = OVERALL2.total_dur_s/60;
 OVERALL2 = add_outlier_cols(OVERALL2, {'state','genotype','condition'}, ...
             {'total_min','n_bouts','mean_bout_dur_s'});
+% ---- compute total recording duration per file (sum over all states) ---
+[recGid, file_keys] = findgroups(OVERALL2.file);
+rec_total_s  = splitapply(@(x) sum(x,'omitnan'), OVERALL2.total_dur_s, recGid);
+rec_total_min = rec_total_s / 60;
+
+% map back to each row
+OVERALL2.rec_total_min = nan(height(OVERALL2),1);
+OVERALL2.state_pct     = nan(height(OVERALL2),1);  % % of recording in that state
+
+for k = 1:numel(file_keys)
+    idx = (OVERALL2.file == file_keys(k));
+    this_rec_min = rec_total_min(k);
+    OVERALL2.rec_total_min(idx) = this_rec_min;
+    if this_rec_min > 0
+        OVERALL2.state_pct(idx) = 100 * OVERALL2.total_min(idx) ./ this_rec_min;
+    else
+        OVERALL2.state_pct(idx) = NaN;
+    end
+end
+
+% Optional: mark outliers also on the % metric (within state×geno×condition)
+OVERALL2 = add_outlier_cols(OVERALL2, {'state','genotype','condition'}, ...
+            {'state_pct'});
+
 
 PERHOUR2 = add_outlier_cols(PERHOUR, {'state','genotype','condition','hour_idx'}, ...
             {'bouts_per_h','dur_s','mean_bout_dur_s'});
@@ -52,27 +76,95 @@ for s = 1:numel(states)
     xcats = categorical(cats, cats);
     b = bar(xcats, G.mean); set(b,'FaceColor', pick_col(COL, st));
     errorbar(xcats, G.mean, G.sem, 'k.', 'LineWidth',1);
-
-    % per-mouse overlay
+    % per-mouse overlay WITH LABELS ON EVERY DOT
     x_mouse = categorical(sub.genotype + " | " + sub.condition, cats);
     xnum = double(x_mouse);
-    jit = (rand(height(sub),1)-0.5)*OPT.jitter;
-    plot(xnum + jit, sub.total_min, 'k.', 'MarkerSize',10);
+    jit   = (rand(height(sub),1)-0.5)*OPT.jitter;
     is_out = sub.total_min_is_outlier;
-    plot(xnum(is_out)+jit(is_out), sub.total_min(is_out), 'r.', 'MarkerSize',12);
-    if OPT.label_outliers
-        for ii = find(is_out).'
-            text(xnum(ii)+jit(ii), sub.total_min(ii), " "+mouse_short(sub.mouse(ii)), ...
-             'Color',[0.6 0 0], 'FontSize',8, ...
-             'HorizontalAlignment','left', 'VerticalAlignment','middle');
+
+    for ii = 1:height(sub)
+        x_i = xnum(ii) + jit(ii);
+        y_i = sub.total_min(ii);
+
+        if is_out(ii)
+            % outliers in red
+            plot(x_i, y_i, 'r.', 'MarkerSize',12);
+            txtCol = [0.6 0 0];
+        else
+            % non-outliers in black
+            plot(x_i, y_i, 'k.', 'MarkerSize',10);
+            txtCol = [0 0 0];
         end
+
+        % mouse ID next to every point (shortened to keep readable)
+        text(x_i, y_i, " "+mouse_short(sub.mouse(ii)), ...
+            'Color',txtCol, 'FontSize',8, ...
+            'HorizontalAlignment','left', 'VerticalAlignment','middle');
+    end
+end
+%% ---------- Fig type A1b: Percent of recording in state ----------
+for s = 1:numel(states)
+    st = states{s};
+    sub = OVERALL2(strcmp(OVERALL2.state, st), :);
+    if isempty(sub), continue; end
+    G = agg_mean_sem(sub, {'genotype','condition'}, 'state_pct');
+    if isempty(G), continue; end
+
+    f = figure('Color','w','Name', ['Percent ' st]); hold on
+    cats = strcat(G.genotype, " | ", G.condition);
+    xcats = categorical(cats, cats);
+    b = bar(xcats, G.mean); set(b,'FaceColor', pick_col(COL, st));
+    errorbar(xcats, G.mean, G.sem, 'k.', 'LineWidth',1);
+
+    % per-mouse overlay WITH ID on every dot (normalized metric)
+    x_mouse = categorical(sub.genotype + " | " + sub.condition, cats);
+    xnum = double(x_mouse);
+    jit   = (rand(height(sub),1)-0.5)*OPT.jitter;
+    is_out = sub.state_pct_is_outlier;
+
+    for ii = 1:height(sub)
+        x_i = xnum(ii) + jit(ii);
+        y_i = sub.state_pct(ii);
+
+        if is_out(ii)
+            plot(x_i, y_i, 'r.', 'MarkerSize',12);
+            txtCol = [0.6 0 0];
+        else
+            plot(x_i, y_i, 'k.', 'MarkerSize',10);
+            txtCol = [0 0 0];
+        end
+
+        text(x_i, y_i, " "+mouse_short(sub.mouse(ii)), ...
+            'Color',txtCol, 'FontSize',8, ...
+            'HorizontalAlignment','left', 'VerticalAlignment','middle');
     end
 
-    ylabel('Total duration (min)');
-    title(sprintf('Total %s (min) — genotype × condition', st));
+    ylabel('% of recording in state');
+    title(sprintf('%% time in %s — genotype × condition', st));
     xtickangle(30); box off
-    saveas(f, fullfile(out_dir, sprintf('fig_total_%s.png', lower(st))));
+    saveas(f, fullfile(out_dir, sprintf('fig_pct_%s.png', lower(st))));
 end
+
+%     % per-mouse overlay
+%     x_mouse = categorical(sub.genotype + " | " + sub.condition, cats);
+%     xnum = double(x_mouse);
+%     jit = (rand(height(sub),1)-0.5)*OPT.jitter;
+%     plot(xnum + jit, sub.total_min, 'k.', 'MarkerSize',10);
+%     is_out = sub.total_min_is_outlier;
+%     plot(xnum(is_out)+jit(is_out), sub.total_min(is_out), 'r.', 'MarkerSize',12);
+%     if OPT.label_outliers
+%         for ii = find(is_out).'
+%             text(xnum(ii)+jit(ii), sub.total_min(ii), " "+mouse_short(sub.mouse(ii)), ...
+%              'Color',[0.6 0 0], 'FontSize',8, ...
+%              'HorizontalAlignment','left', 'VerticalAlignment','middle');
+%         end
+%     end
+% 
+%     ylabel('Total duration (min)');
+%     title(sprintf('Total %s (min) — genotype × condition', st));
+%     xtickangle(30); box off
+%     saveas(f, fullfile(out_dir, sprintf('fig_total_%s.png', lower(st))));
+% end
 
 %% ---------- Fig type A2: Number of bouts ----------
 for s = 1:numel(states)
@@ -87,20 +179,42 @@ for s = 1:numel(states)
     xcats = categorical(cats, cats);
     b = bar(xcats, G.mean); set(b,'FaceColor', pick_col(COL, st));
     errorbar(xcats, G.mean, G.sem, 'k.', 'LineWidth',1);
-
+    
     x_mouse = categorical(sub.genotype + " | " + sub.condition, cats);
     xnum = double(x_mouse);
-    jit = (rand(height(sub),1)-0.5)*OPT.jitter;
-    plot(xnum + jit, sub.n_bouts, 'k.', 'MarkerSize',10);
+    jit   = (rand(height(sub),1)-0.5)*OPT.jitter;
     is_out = sub.n_bouts_is_outlier;
-    plot(xnum(is_out)+jit(is_out), sub.n_bouts(is_out), 'r.', 'MarkerSize',12);
-    if OPT.label_outliers
-        for ii = find(is_out).'
-            text(xnum(ii)+jit(ii), sub.n_bouts(ii), " "+mouse_short(sub.mouse(ii)), ...
-                 'Color',[0.6 0 0], 'FontSize',8, ...
-                 'HorizontalAlignment','left', 'VerticalAlignment','middle');
+
+    for ii = 1:height(sub)
+        x_i = xnum(ii) + jit(ii);
+        y_i = sub.n_bouts(ii);
+
+        if is_out(ii)
+            plot(x_i, y_i, 'r.', 'MarkerSize',12);
+            txtCol = [0.6 0 0];
+        else
+            plot(x_i, y_i, 'k.', 'MarkerSize',10);
+            txtCol = [0 0 0];
         end
+
+        text(x_i, y_i, " "+mouse_short(sub.mouse(ii)), ...
+            'Color',txtCol, 'FontSize',8, ...
+            'HorizontalAlignment','left', 'VerticalAlignment','middle');
     end
+
+    % x_mouse = categorical(sub.genotype + " | " + sub.condition, cats);
+    % xnum = double(x_mouse);
+    % jit = (rand(height(sub),1)-0.5)*OPT.jitter;
+    % plot(xnum + jit, sub.n_bouts, 'k.', 'MarkerSize',10);
+    % is_out = sub.n_bouts_is_outlier;
+    % plot(xnum(is_out)+jit(is_out), sub.n_bouts(is_out), 'r.', 'MarkerSize',12);
+    % if OPT.label_outliers
+    %     for ii = find(is_out).'
+    %         text(xnum(ii)+jit(ii), sub.n_bouts(ii), " "+mouse_short(sub.mouse(ii)), ...
+    %              'Color',[0.6 0 0], 'FontSize',8, ...
+    %              'HorizontalAlignment','left', 'VerticalAlignment','middle');
+    %     end
+    % end
 
     ylabel('Number of bouts');
     title(sprintf('Bouts — %s', st));
@@ -122,19 +236,41 @@ for s = 1:numel(states)
     b = bar(xcats, G.mean); set(b,'FaceColor', pick_col(COL, st));
     errorbar(xcats, G.mean, G.sem, 'k.', 'LineWidth',1);
 
+    % x_mouse = categorical(sub.genotype + " | " + sub.condition, cats);
+    % xnum = double(x_mouse);
+    % jit = (rand(height(sub),1)-0.5)*OPT.jitter;
+    % plot(xnum + jit, sub.mean_bout_dur_s, 'k.', 'MarkerSize',10);
+    % is_out = sub.mean_bout_dur_s_is_outlier;
+    % plot(xnum(is_out)+jit(is_out), sub.mean_bout_dur_s(is_out), 'r.', 'MarkerSize',12);
+    % if OPT.label_outliers
+    %     for ii = find(is_out).'
+    %         text(xnum(ii)+jit(ii), sub.mean_bout_dur_s(ii), " "+mouse_short(sub.mouse(ii)), ...
+    %              'Color',[0.6 0 0], 'FontSize',8, ...
+    %              'HorizontalAlignment','left', 'VerticalAlignment','middle');
+    %     end
+    % end
     x_mouse = categorical(sub.genotype + " | " + sub.condition, cats);
     xnum = double(x_mouse);
-    jit = (rand(height(sub),1)-0.5)*OPT.jitter;
-    plot(xnum + jit, sub.mean_bout_dur_s, 'k.', 'MarkerSize',10);
+    jit   = (rand(height(sub),1)-0.5)*OPT.jitter;
     is_out = sub.mean_bout_dur_s_is_outlier;
-    plot(xnum(is_out)+jit(is_out), sub.mean_bout_dur_s(is_out), 'r.', 'MarkerSize',12);
-    if OPT.label_outliers
-        for ii = find(is_out).'
-            text(xnum(ii)+jit(ii), sub.mean_bout_dur_s(ii), " "+mouse_short(sub.mouse(ii)), ...
-                 'Color',[0.6 0 0], 'FontSize',8, ...
-                 'HorizontalAlignment','left', 'VerticalAlignment','middle');
+
+    for ii = 1:height(sub)
+        x_i = xnum(ii) + jit(ii);
+        y_i = sub.mean_bout_dur_s(ii);
+
+        if is_out(ii)
+            plot(x_i, y_i, 'r.', 'MarkerSize',12);
+            txtCol = [0.6 0 0];
+        else
+            plot(x_i, y_i, 'k.', 'MarkerSize',10);
+            txtCol = [0 0 0];
         end
+
+        text(x_i, y_i, " "+mouse_short(sub.mouse(ii)), ...
+            'Color',txtCol, 'FontSize',8, ...
+            'HorizontalAlignment','left', 'VerticalAlignment','middle');
     end
+
 
     ylabel('Mean bout duration (s)');
     title(sprintf('Mean bout duration — %s', st));
@@ -184,30 +320,64 @@ if ~isempty(PH)
                 errorbar(double(sc.hour), sc.mean, sc.sem, 'o-','LineWidth',1.25, ...
                          'Color', lineCol);
 
-                % per-file overlay (faint grey)
+                % % per-file overlay (faint grey)
+                % pm = PH(strcmp(PH.state, st) & strcmp(PH.genotype,Ugeno{g}) & strcmp(PH.condition,Ucond{c}), :);
+                % files_u = unique(pm.file,'stable');
+                % for ff = 1:numel(files_u)
+                %     p1 = pm(strcmp(pm.file, files_u(ff)), :);
+                %     plot(double(p1.hour_idx), p1.bouts_per_h, '-', ...
+                %          'Color',[0 0 0 0.15], 'LineWidth',0.75);
+                % 
+                %     % highlight outlier points
+                %     outmask = p1.bouts_per_h_is_outlier;
+                %     if any(outmask)
+                %         plot(double(p1.hour_idx(outmask)), p1.bouts_per_h(outmask), ...
+                %              'ro', 'MarkerSize',5, 'LineWidth',1);
+                %         if OPT.label_outliers
+                %             ms = mouse_short(p1.mouse(outmask));
+                %             for ii = 1:numel(ms)
+                %                 text(double(p1.hour_idx(outmask(ii)))+0.05, ...
+                %                      p1.bouts_per_h(outmask(ii)), " "+ms(ii), ...
+                %                      'Color',[0.6 0 0], 'FontSize',7, ...
+                %                      'HorizontalAlignment','left', 'VerticalAlignment','middle');
+                %             end
+                %         end
+                %     end
+                % end
                 pm = PH(strcmp(PH.state, st) & strcmp(PH.genotype,Ugeno{g}) & strcmp(PH.condition,Ucond{c}), :);
                 files_u = unique(pm.file,'stable');
                 for ff = 1:numel(files_u)
                     p1 = pm(strcmp(pm.file, files_u(ff)), :);
+
+                    % faint line to show trajectory
                     plot(double(p1.hour_idx), p1.bouts_per_h, '-', ...
                          'Color',[0 0 0 0.15], 'LineWidth',0.75);
 
-                    % highlight outlier points
-                    outmask = p1.bouts_per_h_is_outlier;
-                    if any(outmask)
-                        plot(double(p1.hour_idx(outmask)), p1.bouts_per_h(outmask), ...
-                             'ro', 'MarkerSize',5, 'LineWidth',1);
-                        if OPT.label_outliers
-                            ms = mouse_short(p1.mouse(outmask));
-                            for ii = 1:numel(ms)
-                                text(double(p1.hour_idx(outmask(ii)))+0.05, ...
-                                     p1.bouts_per_h(outmask(ii)), " "+ms(ii), ...
-                                     'Color',[0.6 0 0], 'FontSize',7, ...
-                                     'HorizontalAlignment','left', 'VerticalAlignment','middle');
-                            end
+                    % label EVERY point with mouse ID
+                    ms_all = mouse_short(p1.mouse);
+                    for ii = 1:height(p1)
+                        x_i = double(p1.hour_idx(ii));
+                        y_i = p1.bouts_per_h(ii);
+
+                        if p1.bouts_per_h_is_outlier(ii)
+                            mCol   = [1 0 0];
+                            mSize  = 5;
+                            txtCol = [0.6 0 0];
+                        else
+                            mCol   = [0 0 0];
+                            mSize  = 4;
+                            txtCol = [0 0 0];
                         end
+
+                        plot(x_i, y_i, 'o', ...
+                             'Color', mCol, 'MarkerSize', mSize, 'LineWidth',1);
+
+                        text(x_i+0.05, y_i, " "+ms_all(ii), ...
+                             'Color',txtCol, 'FontSize',7, ...
+                             'HorizontalAlignment','left', 'VerticalAlignment','middle');
                     end
                 end
+
 
                 title(sprintf('%s | %s', Ugeno{g}, Ucond{c}));
                 xlabel('Hour'); ylabel('Bouts per hour'); 
@@ -230,7 +400,7 @@ catch ME
 end
 %% ---------- NEW: mean bout duration by 3 h windows (per state) ----------
 try
-    make_bout_duration_window_plots(PERHOUR2, out_dir, COL_WT, COL_APP, OPT);
+    make_bout_duration_window_plots_miceID(PERHOUR2, out_dir, COL_WT, COL_APP, OPT);
 catch ME
     warning(ME.identifier, 'Failed to make bout-duration window plots: %s', ME.message);
 end
@@ -356,7 +526,7 @@ geno(geno ~= "WT") = "APP";
 OVERALL2.geno_group = geno;
 
 % States and conditions we care about
-allStates = ["WK","NREM","REM"];
+allStates = ["WK","NREM","REM","MA"];
 allConds  = ["baseline","ambtemp","drugs"];
 
 presentStates = allStates(ismember(allStates, unique(OVERALL2.state)));
@@ -444,38 +614,74 @@ for ri = 1:nConds
         % Mouse-level points with labels (jittered)
         jitter = OPT.jitter;
 
+        % if ~isempty(WTvals)
+        %     xj = xWT + (rand(size(WTvals))-0.5)*2*jitter;
+        %     % non-outliers black, outliers red + label
+        %     for kk = 1:numel(WTvals)
+        %         if WTout(kk)
+        %             plot(xj(kk), WTvals(kk), 'r.', 'MarkerSize',10);
+        %             if OPT.label_outliers
+        %                 text(xj(kk), WTvals(kk), " "+mouse_short(WTmice(kk)), ...
+        %                     'Color',[0.6 0 0], 'FontSize',7, ...
+        %                     'HorizontalAlignment','left', 'VerticalAlignment','bottom');
+        %             end
+        %         else
+        %             plot(xj(kk), WTvals(kk), 'k.', 'MarkerSize',8);
+        %         end
+        %     end
+        % 
         if ~isempty(WTvals)
             xj = xWT + (rand(size(WTvals))-0.5)*2*jitter;
-            % non-outliers black, outliers red + label
+
             for kk = 1:numel(WTvals)
                 if WTout(kk)
                     plot(xj(kk), WTvals(kk), 'r.', 'MarkerSize',10);
-                    if OPT.label_outliers
-                        text(xj(kk), WTvals(kk), " "+mouse_short(WTmice(kk)), ...
-                            'Color',[0.6 0 0], 'FontSize',7, ...
-                            'HorizontalAlignment','left', 'VerticalAlignment','bottom');
-                    end
+                    txtCol = [0.6 0 0];
                 else
                     plot(xj(kk), WTvals(kk), 'k.', 'MarkerSize',8);
+                    txtCol = [0 0 0];
                 end
+
+                text(xj(kk), WTvals(kk), " "+mouse_short(WTmice(kk)), ...
+                    'Color',txtCol, 'FontSize',7, ...
+                    'HorizontalAlignment','left', 'VerticalAlignment','bottom');
             end
         end
 
+
+        % if ~isempty(APPvals)
+        %     xj = xAPP + (rand(size(APPvals))-0.5)*2*jitter;
+        %     for kk = 1:numel(APPvals)
+        %         if APPout(kk)
+        %             plot(xj(kk), APPvals(kk), 'r.', 'MarkerSize',10);
+        %             if OPT.label_outliers
+        %                 text(xj(kk), APPvals(kk), " "+mouse_short(APPmice(kk)), ...
+        %                     'Color',[0.6 0 0], 'FontSize',7, ...
+        %                     'HorizontalAlignment','left', 'VerticalAlignment','bottom');
+        %             end
+        %         else
+        %             plot(xj(kk), APPvals(kk), 'k.', 'MarkerSize',8);
+        %         end
+        %     end
+        % end
         if ~isempty(APPvals)
             xj = xAPP + (rand(size(APPvals))-0.5)*2*jitter;
+
             for kk = 1:numel(APPvals)
                 if APPout(kk)
                     plot(xj(kk), APPvals(kk), 'r.', 'MarkerSize',10);
-                    if OPT.label_outliers
-                        text(xj(kk), APPvals(kk), " "+mouse_short(APPmice(kk)), ...
-                            'Color',[0.6 0 0], 'FontSize',7, ...
-                            'HorizontalAlignment','left', 'VerticalAlignment','bottom');
-                    end
+                    txtCol = [0.6 0 0];
                 else
                     plot(xj(kk), APPvals(kk), 'k.', 'MarkerSize',8);
+                    txtCol = [0 0 0];
                 end
+
+                text(xj(kk), APPvals(kk), " "+mouse_short(APPmice(kk)), ...
+                    'Color',txtCol, 'FontSize',7, ...
+                    'HorizontalAlignment','left', 'VerticalAlignment','bottom');
             end
         end
+
 
         xlim([0.5 2.5]);
         set(gca,'XTick',[1 2],'XTickLabel',{'WT','APP'});
@@ -506,6 +712,8 @@ switch char(st)
         lbl = 'NREM';
     case 'REM'
         lbl = 'REM';
+    case 'MA'
+        lbl = 'MA';
     otherwise
         lbl = char(st);
 end

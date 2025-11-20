@@ -251,6 +251,8 @@ for si = 1:numel(states)
         st_label = 'NREM';
     elseif st_name=="REM"
         st_label = 'REM';
+    elseif st_label== "MA"
+        st_label = 'MA';
     else
         st_label = char(st_name);
     end

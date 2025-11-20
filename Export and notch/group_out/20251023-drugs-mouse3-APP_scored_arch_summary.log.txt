@@ -1,0 +1,18 @@
+Sleep architecture summary
+Source CSV : /Users/margaridaseabra/15.11scores/20251023-drugs-mouse3-APP_scored_scores_1Hz.csv
+Output dir : /Users/margaridaseabra/sleep_app_ach_warm/Export and notch/group_out
+Hours      : 8
+Include MA : 1
+MA bouts   : 177  | MA seconds: 843
+MA rule    : Wake bouts ≤ 15 s reclassified to MA
+
+Overall metrics:
+  WK    bouts=  64  total=  12011s  mean= 187.7s
+  NREM  bouts= 241  total=  12044s  mean=  50.0s
+  REM   bouts=  20  total=   1381s  mean=  69.0s
+  MA    bouts= 177  total=    843s  mean=   4.8s
+
+Files:
+  /Users/margaridaseabra/sleep_app_ach_warm/Export and notch/group_out/20251023-drugs-mouse3-APP_scored_arch_per_hour.csv
+  /Users/margaridaseabra/sleep_app_ach_warm/Export and notch/group_out/20251023-drugs-mouse3-APP_scored_arch_overall.csv
+  /Users/margaridaseabra/sleep_app_ach_warm/Export and notch/group_out/20251023-drugs-mouse3-APP_scored_arch_runs.csv

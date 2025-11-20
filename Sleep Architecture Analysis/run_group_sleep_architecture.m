@@ -21,7 +21,7 @@ p = inputParser;
 addRequired(p,'input_dir',@ischar);
 addParameter(p,'pattern','*_scores_1Hz.csv',@ischar);
 addParameter(p,'codes',struct('WK',0,'NREM',1,'REM',2,'MA',15),@isstruct);
-addParameter(p,'includeMA',false,@islogical);
+addParameter(p,'includeMA',true,@islogical);
 addParameter(p,'ma_thresh_sec',15,@(x)isscalar(x)&&x>0);
 addParameter(p,'reclassify_short_wake_to_MA',true,@islogical);
 addParameter(p,'out_dir','',@ischar);
@@ -118,7 +118,9 @@ for i = 1:numel(F)
     P = OUT_i.per_hour;
     if istable(P) && ~isempty(P)
         states = {'wk','nrem','rem'};
-        if S.includeMA && any(strcmpi(OUT_i.overall.state,'MA')), states = [states, {'ma'}]; end
+        if S.includeMA
+            states = [states, {'ma'}];
+        end
 
         for s = 1:numel(states)
             st = states{s};

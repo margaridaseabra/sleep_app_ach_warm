@@ -14,3 +14,7 @@ State: rem
   Repeated measures cols: baseline, ambtemp, drugs
   (see ranova / multcompare outputs in STATS.rem)
 
+State: ma
+  Repeated measures cols: baseline, ambtemp, drugs
+  (see ranova / multcompare outputs in STATS.ma)
+

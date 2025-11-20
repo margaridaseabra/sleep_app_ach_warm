@@ -1,0 +1,18 @@
+Sleep architecture summary
+Source CSV : /Users/margaridaseabra/15.11scores/20251011-baseline-mouse3-APP_scored_scores_1Hz.csv
+Output dir : /Users/margaridaseabra/sleep_app_ach_warm/Export and notch/group_out
+Hours      : 7
+Include MA : 1
+MA bouts   : 173  | MA seconds: 509
+MA rule    : Wake bouts ≤ 15 s reclassified to MA
+
+Overall metrics:
+  WK    bouts=  29  total=  10766s  mean= 371.2s
+  NREM  bouts= 201  total=  10149s  mean=  50.5s
+  REM   bouts=  27  total=   1907s  mean=  70.6s
+  MA    bouts= 173  total=    509s  mean=   2.9s
+
+Files:
+  /Users/margaridaseabra/sleep_app_ach_warm/Export and notch/group_out/20251011-baseline-mouse3-APP_scored_arch_per_hour.csv
+  /Users/margaridaseabra/sleep_app_ach_warm/Export and notch/group_out/20251011-baseline-mouse3-APP_scored_arch_overall.csv
+  /Users/margaridaseabra/sleep_app_ach_warm/Export and notch/group_out/20251011-baseline-mouse3-APP_scored_arch_runs.csv
