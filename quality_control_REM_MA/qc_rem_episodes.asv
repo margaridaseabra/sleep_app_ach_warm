@@ -1,0 +1,296 @@
+function qc = qc_rem_episodes(eeg_mat_file, scores_csv, varargin)
+% qc_rem_episodes  Interactive QC of REM bouts for one session.
+%
+% Usage:
+%   qc = qc_rem_episodes('20251001_baseline_mouse1_APP.mat', ...
+%                        '20251001_baseline_mouse1_APP_scored_scores_1Hz.csv', ...
+%                        'eegVar','eeg', ...
+%                        'emgVar','emg', ...
+%                        'fsVar','eeg_frequency');
+%
+% Keys inside the viewer:
+%   g = good REM
+%   b = bad (reject)
+%   m = maybe / uncertain
+%   t = trim start/end of this episode (you enter new absolute times)
+%   p = go to previous episode
+%   q = quit (keep what you have so far)
+%
+% Output struct qc:
+%   qc.rem_st_s   : start times (s) AFTER trimming
+%   qc.rem_en_s   : end times   (s) AFTER trimming
+%   qc.flags      : 1=good, 0=bad, -1=maybe, NaN=not rated
+%
+% A MAT file '<eegBase>_REM_QC.mat' is also saved next to eeg_mat_file.
+
+    % ---------- Parse inputs ----------
+    p = inputParser;
+    addParameter(p,'codes',struct('WK',0,'NREM',1,'REM',2,'MA',15),@isstruct);
+    addParameter(p,'epoch_sec',1,@(x)isscalar(x)&&x>0);
+    addParameter(p,'eegVar','eeg',@ischar);
+    addParameter(p,'emgVar','emg',@ischar);
+    addParameter(p,'fsVar','eeg_frequency',@ischar);
+    addParameter(p,'fmax',30,@(x)isscalar(x)&&x>0);  % max freq for PSD x-axis
+    parse(p,varargin{:});
+    S = p.Results;
+    C = S.codes;
+
+    % ---------- Load scores ----------
+    T = readtable(scores_csv);
+    assert(all(ismember({'time_s','score'}, T.Properties.VariableNames)), ...
+        'Scores CSV must contain columns time_s and score');
+
+    time_s = double(T.time_s(:));
+    score  = double(T.score(:));
+    n_epoch = numel(score);
+
+    [st_idx, en_idx] = runs_from_codes(score);
+    run_code = score(st_idx);
+
+    isREM      = (run_code == C.REM);
+    rem_st_idx = st_idx(isREM);
+    rem_en_idx = en_idx(isREM);
+    nREM       = numel(rem_st_idx);
+
+    if nREM == 0
+        warning('No REM bouts found in %s', scores_csv);
+        qc = struct('rem_st_s',[],'rem_en_s',[],'flags',[]);
+        return;
+    end
+
+    rem_st_s = time_s(rem_st_idx);
+    rem_en_s = time_s(rem_en_idx);
+
+    % ---------- Load EEG / EMG ----------
+    Smat = load(eeg_mat_file);
+
+    if ~isfield(Smat, S.eegVar)
+        error('EEG variable "%s" not found in %s', S.eegVar, eeg_mat_file);
+    end
+    if ~isfield(Smat, S.emgVar)
+        error('EMG variable "%s" not found in %s', S.emgVar, eeg_mat_file);
+    end
+    if ~isfield(Smat, S.fsVar)
+        error('Sampling-rate variable "%s" not found in %s', S.fsVar, eeg_mat_file);
+    end
+
+    eeg = double(Smat.(S.eegVar)(:));
+    emg = double(Smat.(S.emgVar)(:));
+    fs  = double(Smat.(S.fsVar));
+
+    t_eeg = (0:numel(eeg)-1)'/fs;
+
+    % ---------- QC loop ----------
+    flags = NaN(nREM,1);
+
+    fprintf('\nREM QC for %s\n', eeg_mat_file);
+    fprintf('Controls inside figure:\n');
+    fprintf('  g = good,  b = bad,  m = maybe,  t = trim,  p = previous,  q = quit\n\n');
+
+    i = 1;
+    while i <= nREM
+        this_st = rem_st_s(i);
+        this_en = rem_en_s(i);
+
+        % context window
+        win_pre  = 20;   % seconds before REM onset
+        win_post = 20;   % seconds after REM end
+        win_st   = this_st - win_pre;
+        win_en   = this_en + win_post;
+
+        idx_win = t_eeg >= win_st & t_eeg <= win_en;
+        t_win   = t_eeg(idx_win);
+        eeg_win = eeg(idx_win);
+        emg_win = emg(idx_win);
+
+        % expand 1-Hz scoring to continuous samples in window
+        sec_idx = round(t_win / S.epoch_sec) + 1;
+        sec_idx(sec_idx < 1)       = 1;
+        sec_idx(sec_idx > n_epoch) = n_epoch;
+        state_win = score(sec_idx);
+
+        % show viewer for this REM episode
+        fig = plot_one_episode( ...
+            t_win, eeg_win, emg_win, state_win, ...
+            this_st, this_en, i, nREM, fs, ...
+            'REM', S.fmax);
+
+        % wait for key press (stored in fig.UserData)
+        waitfor(fig, 'UserData');
+        choice = get(fig,'UserData');
+        close(fig);
+
+        switch choice
+            case 'g'
+                flags(i) = 1;
+                i = i + 1;
+
+            case 'b'
+                flags(i) = 0;
+                i = i + 1;
+
+            case 'm'
+                flags(i) = -1;
+                i = i + 1;
+
+            case 't'
+                [rem_st_s(i), rem_en_s(i)] = ask_trim(rem_st_s(i), rem_en_s(i));
+                fprintf('Episode %d trimmed to [%.1f, %.1f] s.\n', ...
+                        i, rem_st_s(i), rem_en_s(i));
+                % stay on same i to re-check after trimming
+
+            case 'p'
+                i = max(1, i-1);
+
+            case 'q'
+                fprintf('User requested quit; saving partial QC.\n');
+                break;
+
+            otherwise
+                % unknown key pressed: re-show same episode
+        end
+    end
+
+    % ---------- Save QC ----------
+    qc = struct('rem_st_s',rem_st_s, ...
+                'rem_en_s',rem_en_s, ...
+                'flags',   flags);
+
+    [pth,base] = fileparts(eeg_mat_file);
+    qc_file = fullfile(pth,[base '_REM_QC.mat']);
+    save(qc_file,'qc');
+    fprintf('REM QC saved to %s\n', qc_file);
+end
+
+
+% =====================================================================
+% Helper: contiguous runs from integer code vector
+% =====================================================================
+function [st, en] = runs_from_codes(code)
+    code = code(:);
+    if isempty(code)
+        st = []; en = [];
+        return;
+    end
+    d = diff(code);
+    st = [1; find(d~=0)+1];
+    en = [st(2:end)-1; numel(code)];
+end
+
+
+% =====================================================================
+% Helper: ask user for trimming (absolute seconds)
+% =====================================================================
+function [new_st, new_en] = ask_trim(old_st, old_en)
+    prompt = { ...
+        sprintf('New START (s, absolute time). Current = %.2f', old_st), ...
+        sprintf('New END (s, absolute time).   Current = %.2f', old_en)};
+    dlgtitle = 'Trim REM episode (absolute seconds)';
+    dims = [1 60];
+    definput = {sprintf('%.2f',old_st), sprintf('%.2f',old_en)};
+    answer = inputdlg(prompt, dlgtitle, dims, definput);
+
+    if isempty(answer)
+        new_st = old_st;
+        new_en = old_en;
+        return;
+    end
+
+    new_st = str2double(answer{1});
+    new_en = str2double(answer{2});
+
+    if isnan(new_st) || isnan(new_en) || new_st >= new_en
+        warning('Invalid trimming; keeping original bounds.');
+        new_st = old_st;
+        new_en = old_en;
+    end
+end
+
+
+% =====================================================================
+% Helper: episode viewer (EEG, EMG, Morlet, PSD)
+% =====================================================================
+function fig = plot_one_episode(t, eeg, emg, state_win, ...
+                                st_s, en_s, ep_idx, nEp, fs, ...
+                                label, fmax)
+
+    nRows = 5;
+
+    fig = figure('Color','w','Name',[label ' QC viewer'], ...
+                 'KeyPressFcn',@keyPressCallback);
+    set(fig,'UserData','');  % will store last key
+
+    rel_t  = t - st_s;        % time relative to episode start
+    ep_dur = en_s - st_s;
+
+    % --- 1) State code ---
+    ax1 = subplot(nRows,1,1);
+    plot(rel_t, state_win,'k','LineWidth',1); hold on;
+    yl = ylim;
+    patch([0 ep_dur ep_dur 0], [yl(1) yl(1) yl(2) yl(2)], ...
+          [0.9 0.9 1], 'EdgeColor','none','FaceAlpha',0.4);
+    ylim(yl);
+    xline(0,'k--'); xline(ep_dur,'k--');
+    ylabel('state');
+    title(sprintf('%s episode %d/%d', label, ep_idx, nEp));
+
+    % --- 2) EEG ---
+    ax2 = subplot(nRows,1,2);
+    plot(rel_t, eeg); hold on;
+    xline(0,'k--'); xline(ep_dur,'k--');
+    ylabel('EEG');
+    title('Raw EEG');
+
+    % --- 3) EMG ---
+    ax3 = subplot(nRows,1,3);
+    plot(rel_t, emg); hold on;
+    xline(0,'k--'); xline(ep_dur,'k--');
+    ylabel('EMG');
+    title('Raw EMG');
+
+    
+    xlabel('Time rel episode start (s)');
+
+    % --- 5) Robust PSD inside episode core ---
+    ax5 = subplot(nRows,1,5);
+    core_mask = rel_t >= 0 & rel_t <= ep_dur;
+    eeg_core  = eeg(core_mask);
+
+    min_dur_s = 4;   % require at least 4 s
+    if numel(eeg_core) < min_dur_s * fs
+        text(0.5,0.5, ...
+            sprintf('Too short for PSD (%.1f s)', numel(eeg_core)/fs), ...
+            'Units','normalized', 'HorizontalAlignment','center');
+        axis off;
+    else
+        win_len = min(numel(eeg_core), round(4*fs));
+        if win_len < 16
+            text(0.5,0.5,'Too short for PSD','Units','normalized', ...
+                 'HorizontalAlignment','center');
+            axis off;
+        else
+            win   = hamming(win_len);
+            nover = floor(win_len/2);
+            nfft  = max(256, 2^nextpow2(win_len));
+
+            [pxx,f_psd] = pwelch(eeg_core, win, nover, nfft, fs);
+            pxx_db = 10*log10(pxx);
+
+            plot(f_psd, pxx_db);
+            xlim([0 min(fmax, max(f_psd))]);
+            xlabel('Hz');
+            ylabel('Power (dB)');
+            title(sprintf('PSD inside %s core (%.1f s)', label, numel(eeg_core)/fs));
+            grid on;
+        end
+    end
+
+    linkaxes([ax1 ax2 ax3 ax4],'x');
+    xlabel(ax4,'Time rel episode start (s)');
+    sgtitle(sprintf('%s QC – g:good  b:bad  m:maybe  t:trim  p:prev  q:quit',label));
+
+    % nested callback to record key
+    function keyPressCallback(src,event)
+        set(src,'UserData',event.Key);
+    end
+end
