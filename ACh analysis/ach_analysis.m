@@ -378,7 +378,8 @@ for i = 1:numel(state_names)
         if verbose
             fprintf('%s ACh: no samples, skipping PSD.\n', nm);
         end
-        PSD = struct('f',[],'psd',[],'band_power',NaN,'peak_freq',NaN,'peak_amp',NaN);
+        PSD = struct('f',[],'psd',[],'band_power',NaN,'peak_freq',NaN, ...
+                     'peak_amp',NaN,'cycle_freq',NaN);
     else
         if verbose
             fprintf('%s ACh: %d samples (%.1f min)\n', nm, Ls, Ls/fs_ach/60);
@@ -388,10 +389,14 @@ for i = 1:numel(state_names)
             ach_psd_state(sig_state, fs_ach, S.psd_fmin, S.psd_fmax, ...
                           S.psd_win_sec, verbose, ['ACh PSD ' nm]);
 
+        % Compute cycle frequency from peak-to-peak intervals
+        cycle_f = compute_cycle_freq_from_signal(sig_state, fs_ach);
+
         PSD = struct('f',f_psd,'psd',psd_raw, ...
                      'band_power',band_power, ...
                      'peak_freq',peak_f, ...
-                     'peak_amp',peak_amp);
+                     'peak_amp',peak_amp, ...
+                     'cycle_freq',cycle_f);
     end
 
     OUT.psd.(nm) = PSD;
@@ -450,6 +455,7 @@ end
 powers = [OUT.psd.Wake.band_power, OUT.psd.NREM.band_power, OUT.psd.REM.band_power];
 pfreqs = [OUT.psd.Wake.peak_freq,  OUT.psd.NREM.peak_freq,  OUT.psd.REM.peak_freq];
 pamps  = [OUT.psd.Wake.peak_amp,   OUT.psd.NREM.peak_amp,   OUT.psd.REM.peak_amp];
+
 
 cats = categorical({'Wake','NREM','REM'});
 
@@ -681,4 +687,82 @@ for j = 1:nEv
     p = polyfit(t_win, y, 1);     % y = p(1)*t + p(2)
     slopes(j) = p(1);             % slope (dF/F per second)
 end
+end
+
+%% ======================= Helper: compute_cycle_freq_from_signal =======================
+function cycleHz = compute_cycle_freq_from_signal(sig, fs)
+% Compute ACh cycle frequency from the signal using autocorrelation
+% 
+% INPUTS:
+%   sig    - ACh signal vector (dF/F)
+%   fs     - sampling frequency (Hz)
+%
+% OUTPUT:
+%   cycleHz - average cycle frequency in Hz (NaN if cannot compute)
+
+    cycleHz = NaN;
+    
+    if isempty(sig) || numel(sig) < 100
+        fprintf('  [cycle_freq] Signal too short (%d samples)\n', numel(sig));
+        return;
+    end
+    
+    % Detrend and normalize
+    sig = detrend(sig(:));
+    if std(sig) == 0
+        fprintf('  [cycle_freq] Zero variance signal\n');
+        return;
+    end
+    sig = sig / std(sig);
+    
+    % Method 1: Autocorrelation approach
+    % Compute autocorrelation
+    max_lag = min(numel(sig)-1, round(fs * 200));  % up to 200s lag
+    [acf, lags] = xcorr(sig, max_lag, 'coeff');
+    
+    % Only look at positive lags
+    acf = acf(lags >= 0);
+    lags = lags(lags >= 0);
+    
+    % Find first significant peak after lag 0
+    % Look for peaks after at least 1 second (to avoid detecting noise)
+    min_lag = round(fs * 1);  % minimum 1 second between cycles
+    
+    acf_search = acf(lags >= min_lag);
+    lags_search = lags(lags >= min_lag);
+    
+    if isempty(acf_search)
+        fprintf('  [cycle_freq] No lags to search\n');
+        return;
+    end
+    
+    % Find peaks in autocorrelation
+    [pks, pk_locs] = findpeaks(acf_search, 'MinPeakHeight', 0.1, 'SortStr', 'descend');
+    
+    if isempty(pks)
+        fprintf('  [cycle_freq] No peaks in autocorrelation (tried MinPeakHeight=0.1)\n');
+        
+        % Try even more relaxed
+        [pks, pk_locs] = findpeaks(acf_search, 'MinPeakHeight', 0.05, 'SortStr', 'descend');
+        
+        if isempty(pks)
+            fprintf('  [cycle_freq] No peaks even with MinPeakHeight=0.05\n');
+            return;
+        end
+    end
+    
+    % Take the first (strongest) peak
+    first_peak_idx = pk_locs(1);
+    lag_samples = lags_search(first_peak_idx);
+    period_sec = lag_samples / fs;
+    cycleHz = 1 / period_sec;
+    
+    % Sanity check: typical ACh cycles are 0.002-1 Hz
+    if cycleHz < 0.002 || cycleHz > 1
+        fprintf('  [cycle_freq] Frequency %.4f Hz outside valid range [0.002-1 Hz]\n', cycleHz);
+        cycleHz = NaN;
+    else
+        fprintf('  [cycle_freq] Computed: %.4f Hz (period=%.1fs, acf_peak=%.2f)\n', ...
+                cycleHz, period_sec, pks(1));
+    end
 end

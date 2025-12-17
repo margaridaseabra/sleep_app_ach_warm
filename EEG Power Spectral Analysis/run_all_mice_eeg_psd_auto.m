@@ -1,51 +1,62 @@
 function run_all_mice_eeg_psd_auto(eegDir, scoreDir)
     % Batch analysis of all EEG files in eegDir, using score CSVs in scoreDir
+    %
+    % EEG example:
+    %   20251023-drugs-mouse3_APP.mat
+    %
+    % Score CSV example:
+    %   20251023_drugs_mouse3_APP_scored_scores_1Hz.csv
 
     baseOutDir = 'EEG_PSD_AllMice';
-    if ~exist(baseOutDir, 'dir'), mkdir(baseOutDir); end
+    if ~exist(baseOutDir, 'dir')
+        mkdir(baseOutDir);
+    end
 
-    % Adjust pattern if needed – this matches your example filenames
-    eegFiles = dir(fullfile(eegDir, '*notched50Hz_bw3*.mat'));
+    eegFiles = dir(fullfile(eegDir, '*.mat'));
     allTbl   = table();
 
     for k = 1:numel(eegFiles)
         eegFile = fullfile(eegDir, eegFiles(k).name);
-        [~, eegName, ~] = fileparts(eegFiles(k).name);
+        [~, eegNameFull, ~] = fileparts(eegFiles(k).name);
+        % eegNameFull: e.g. '20251023-drugs-mouse3_APP'
 
-        % 1) Remove '_notched...' suffix:
-        eegBase = regexprep(eegName, '_notched.*$', '');
-        % Ex: '20251023-drugs_mouse3'
+        % 1) Strip any trailing processing suffix if it ever exists
+        %    (safe even if there is none)
+        eegBase = regexprep(eegNameFull, '(_scored.*|_notched.*)$', '');
 
-        % 2) Replace '_' with '-' to match score filename style:
-        % '20251023-drugs_mouse3' -> '20251023-drugs-mouse3'
-        patternBase = strrep(eegBase, '_', '-');
+        % 2) Replace '-' with '_' to match score naming
+        %    '20251023-drugs-mouse3_APP' -> '20251023_drugs_mouse3_APP'
+        patternBase = strrep(eegBase, '-', '_');
 
-        % 3) Score pattern: 20251023-drugs-mouse3-WT_scored_scores_1Hz.csv
-        scorePattern = sprintf('%s-*_scored_scores_1Hz*.csv', patternBase);
+        % 3) Score CSV pattern: exact match of base + '_scored_scores_1Hz.csv'
+        %    -> '20251023_drugs_mouse3_APP_scored_scores_1Hz.csv'
+        scorePattern = sprintf('%s_scored_scores_1Hz.csv', patternBase);
+
         scoreCandidates = dir(fullfile(scoreDir, scorePattern));
 
         if isempty(scoreCandidates)
             warning('No score CSV found for EEG %s with pattern %s', ...
-                    eegName, scorePattern);
+                    eegNameFull, scorePattern);
             continue;
         elseif numel(scoreCandidates) > 1
-            warning('Multiple CSVs found for EEG %s, using the first one.', eegName);
+            warning('Multiple CSVs found for EEG %s, using the first one.', ...
+                    eegNameFull);
         end
 
         scoreFile = fullfile(scoreDir, scoreCandidates(1).name);
 
-        % Run single-session analysis
+        % 4) Run single-session analysis
         [sessionTbl, ~, meta] = eeg_each_band_from_csv( ...
             eegFile, scoreFile, baseOutDir);
 
-        fprintf('📄 Done: %s (%s, %s) from %s\n', ...
-                meta.mouseID, meta.genotype, meta.condition, eegName);
+        fprintf(' Done: %s (%s, %s) from %s\n', ...
+                meta.mouseID, meta.genotype, meta.condition, eegNameFull);
 
-        allTbl = [allTbl; sessionTbl]; %#ok<AGROW>
+        allTbl = [allTbl; sessionTbl];
     end
 
-    % Save big summary CSV
+    % 5) Save big summary CSV
     outCsv = fullfile(baseOutDir, 'EEG_band_power_allmice.csv');
     writetable(allTbl, outCsv);
-    fprintf('📁 Saved group summary to %s\n', outCsv);
+    fprintf(' Saved group summary to %s\n', outCsv);
 end

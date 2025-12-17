@@ -19,7 +19,7 @@ function [sessionTbl, result, meta] = eeg_each_band_from_csv( ...
     EEG = eegData.eeg;
     Fs  = eegData.eeg_frequency;
     % -------- Optional 50 Hz notch filter --------
-    doNotch = true;   % set to false if your EEG is already notched
+    doNotch = false;   % set to false if your EEG is already notched
 
     if doNotch
         % 50 Hz notch with ~3 Hz bandwidth

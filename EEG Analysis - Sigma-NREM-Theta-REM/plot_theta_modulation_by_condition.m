@@ -35,7 +35,8 @@ function plot_theta_modulation_by_condition(outRoot)
     conditions    = tbl.Condition(sort(idxFirst))';
 
     % Common modulation frequency axis (0–0.15 Hz)
-    F_common = (0:0.001:0.15)';
+    mod_f_min = 0.01;   % or whatever you used inside psd_sigma_theta_analysis
+    F_common  = (mod_f_min:0.001:0.15)';
 
     for ci = 1:numel(conditions)
         cond = conditions(ci);
@@ -72,7 +73,7 @@ function plot_theta_modulation_by_condition(outRoot)
                 OUT = S.OUT;
 
                 f  = OUT.theta.mod_f(:);
-                ps = OUT.theta.mod_psd(:);       % raw PSD of theta envelope
+                ps = OUT.theta.mod_psd_plot(:);  % whitened + normalized, same source as metrics
 
                 % Normalise for plotting (A.U.)
                 ps = ps ./ max(ps);
@@ -100,7 +101,7 @@ function plot_theta_modulation_by_condition(outRoot)
             hLines(gi) = plot(F_common, mPSD, 'Color', c*0.9, 'LineWidth',2);
         end
 
-        xlim([0 0.15]);
+        xlim([mod_f_min 0.15]);
         xlabel('Modulation frequency (Hz)');
         ylabel('Theta power (A.U.)');
         title(sprintf('%s – theta modulation (REM)', cond));

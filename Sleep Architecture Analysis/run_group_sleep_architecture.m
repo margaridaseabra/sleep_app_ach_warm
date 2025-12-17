@@ -2,10 +2,15 @@ function OUT = run_group_sleep_architecture(input_dir, varargin)
 % RUN_GROUP_SLEEP_ARCHITECTURE
 % Batch sleep-architecture analysis + genotype/condition comparisons.
 %
-% Assumes filenames like:
-%   <date>-<condition>-<mouse>-<APP_or_WT>_scores_1Hz.csv
+% Assumes filenames like (your current patterns):
+%   20251001-baseline-mouse1_scores_1Hz.csv
+%   20251012-ambtemp_mouse8_scored_scores_1Hz.csv
+%
+% General pattern:
+%   <date>-<condition>-or-_<mouse>[optional _scored]_scores_1Hz.csv
+%
 % Example:
-%   20251001-baseline-mouse1-APP_scores_1Hz.csv
+%   20251001-baseline-mouse1_scores_1Hz.csv
 %
 % Usage:
 % OUT = run_group_sleep_architecture('/path/to/scores', ...
@@ -68,7 +73,9 @@ META = table('Size',[0 numel(schema_meta_names)], ...
 % ----------------- loop files -----------------
 for i = 1:numel(F)
     csv_path = fullfile(F(i).folder, F(i).name);
-    info = parse_info_from_filename(F(i).name);
+
+    % --- NEW: parse using local helper that matches your filename pattern
+    info = parse_info_from_fname_local(F(i).name);
 
     % always track metadata (standardized columns only)
     META = [META; {string(F(i).name), string(info.date), string(info.condition), ...
@@ -172,8 +179,6 @@ end
 if ~isempty(META), writetable(META, meta_csv); end
 
 % ----------------- plots (only if we have data) -----------------
-% ----------------- plots (only if we have data) -----------------
-
 if ~isempty(rows_overall) && ~isempty(rows_perhr)
     STATS = run_sleep_arch_rm_anova(rows_overall, S.out_dir);
     save(fullfile(S.out_dir,'sleep_arch_rm_two_way_anova.mat'), 'STATS');
@@ -182,7 +187,21 @@ if ~isempty(rows_overall) && ~isempty(rows_perhr)
     BOUTSTATS = run_bout_window_stats(rows_perhr, S.out_dir);
     save(fullfile(S.out_dir,'boutwin_stats.mat'), 'BOUTSTATS');
 
+    % Existing group plots
     make_group_plots_new(rows_overall, rows_perhr, S.out_dir);
+
+    % NEW: % time in each state (WK/NREM/REM/MA) per condition,
+    % with APP vs WT bars and bigger gaps between conditions.
+    % For ambient warming and drug, exclude first 1.5 h.
+    make_state_percent_by_cond_genotype(rows_perhr, S.out_dir, ...
+        'cond_order', {'baseline','ambtemp','drug'}, ...
+        'crop_first_sec', 5400);
+
+    % Per-hour bout plots per state
+    states_to_plot = {'WK','NREM','REM','MA'};
+    for k = 1:numel(states_to_plot)
+        plot_bouts_per_hour_baseline_APPvsWT(rows_perhr, S.out_dir, states_to_plot{k});
+    end
 end
 
 % ----------------- return -----------------
@@ -190,5 +209,48 @@ OUT = struct('overall',rows_overall,'per_hour',rows_perhr,'meta',META, ...
              'out_dir',S.out_dir,'files',struct('overall_csv',overall_csv, ...
                                                 'perhour_csv',perhour_csv, ...
                                                 'meta_csv',meta_csv));
-fprintf('✅ Group run finished. Outputs in: %s\n', S.out_dir);
+fprintf(' Group run finished. Outputs in: %s\n', S.out_dir);
+end
+
+% =====================================================================
+% =====================================================================
+% Local helper: parse your filename pattern
+% Expected pattern:
+%   YYYYMMDD_condition_mouseX_APP_scored_scores_1Hz.csv
+%   YYYYMMDD_condition_mouseX_WT_scored_scores_1Hz.csv
+% =====================================================================
+function info = parse_info_from_fname_local(fname)
+    % Returns struct with: date, condition, mouse, genotype, ok
+
+    [~, base, ~] = fileparts(fname);
+
+    info = struct('date',"", 'condition',"", 'mouse',"", ...
+                  'genotype',"", 'ok', false);
+
+    % Pattern:
+    %   <date>_<cond>_<mouse>_<APP/WT>[_scored]_scores_1Hz
+    %
+    % Examples:
+    %   20251001_baseline_mouse1_APP_scored_scores_1Hz
+    %   20251002_baseline_mouse2_WT_scored_scores_1Hz
+    %
+    expr = ['^(?<date>\d{8})_' ...         % 8-digit date
+            '(?<condition>[^_]+)_' ...     % condition up to next underscore
+            '(?<mouse>mouse\d+)_' ...      % mouse + digits
+            '(?<genotype>APP|WT)' ...      % APP or WT
+            '(?<scored>_scored)?' ...      % optional "_scored"
+            '_scores_1Hz$'];               % final suffix
+
+    m = regexp(base, expr, 'names');
+
+    if isempty(m)
+        % pattern not recognized
+        return;
+    end
+
+    info.date      = string(m.date);
+    info.condition = string(m.condition);
+    info.mouse     = string(m.mouse);
+    info.genotype  = string(m.genotype);
+    info.ok        = true;
 end

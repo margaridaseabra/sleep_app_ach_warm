@@ -1,6 +1,6 @@
-meta_csv   = '/Users/margaridaseabra/sleep_app_ach_warm/Ambtemp prep/ambtemp-times-all-mice.xlsx';   % your Mouse / Genotype / times
+meta_csv   = '/Users/margaridaseabra/sleep_app_ach_warm/Ambtemp prep-3h-selection/';   % your Mouse / Genotype / times
 scores_dir = '/Users/margaridaseabra/24.11scores';
-mats_dir   = '/Users/margaridaseabra/24.11notchedsignal';
+mats_dir   = '/Users/margaridaseabra/24.11scored files';
 out_dir    = '/Users/margaridaseabra/24.11_cropped_ambtemp';
 
 OUT = crop_baseline_ambtemp_segments(meta_csv, scores_dir, mats_dir, out_dir, ...

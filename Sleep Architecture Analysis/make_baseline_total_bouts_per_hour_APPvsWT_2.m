@@ -1,0 +1,776 @@
+function OUT = make_baseline_total_bouts_per_hour_APPvsWT_2(rows_perhr, out_dir, states_to_plot, varargin)
+% make_baseline_total_bouts_per_hour_APPvsWT_2
+% -------------------------------------------------------------------------
+% For BASELINE recordings only:
+%   For each requested STATE (WK, MA, NREM, REM), make:
+%
+%   Figure 1 (time course):
+%       X: hour_idx (0, 1, 2, ...)
+%       Y: bouts_per_h (for that state)
+%       - Two curves: WT vs APP (mean ± SEM across mice)
+%       - OPTIONAL:
+%           * jittered dots per mouse (with optional IDs)
+%           * shaded SEM "blur" bands around the mean
+%       - Per-hour stats (exploratory): t-test, ranksum, Cohen's d, BH-FDR across hours
+%
+%   Figure 2 (between-mice variability):
+%       - For each mouse, compute ONE summary value:
+%             mean_bouts_per_h_mouse = mean over all baseline hours (for that state)
+%       - For each genotype (WT / APP), consider the distribution of
+%         mean_bouts_per_h_mouse across mice.
+%       - Plot WT vs APP:
+%             X: genotype
+%             Y: mean bouts/hour (per mouse)
+%         Bars: group mean
+%         Error bars: SD across mice (between-mice variability)
+%         Dots: individual mice (IDs optional)
+%       - Stats on between-mice variability:
+%             * vartest2 on per-mouse means (equality of variance)
+%             * t-test on per-mouse means (difference in central tendency)
+%             * Cohen's d for mean difference
+%
+%   NEW TABLE OUTPUTS (per state):
+%       OUT.perMouseHour.(STATE)      : wide table (mouse x hour)
+%           Columns: mouse | genotype | H0 | H1 | ...
+%       OUT.perMouseHour_long.(STATE) : long table (one row per mouse–hour)
+%           Columns: mouse | genotype | hour_idx | bouts_per_h
+%       Both are also written as CSV into out_dir.
+%
+% INPUT
+%   rows_perhr    : table from run_group_sleep_architecture (group_per_hour)
+%   out_dir       : folder to save figures (default: pwd)
+%   states_to_plot: string/cell array, default ["WK","MA","NREM","REM"]
+%
+% NAME–VALUE OPTIONS
+%   'showIDs'              : true/false, show mouse IDs next to dots (default: false)
+%   'showStars'            : true/false, draw per-hour stars (default: true)
+%   'useFDRforStars'       : true/false, use FDR p for stars (default: true)
+%   'minNperGroupForStats' : minimum n per genotype to draw a star (default: 3)
+%   'pointStyle'           : 'dots' | 'bands' | 'both' | 'none' (default: 'dots')
+%   'bandAlpha'            : transparency of SEM band (default: 0.2)
+%
+% OUTPUT
+%   OUT.success              : logical
+%   OUT.states_plotted       : string array of states actually plotted
+%   OUT.files.(STATE)        : PNG filenames per state (time-course)
+%   OUT.var_files.(STATE)    : PNG filenames per state (between-mice variability plot)
+%   OUT.stats.(STATE)        : table of per-hour stats for that state
+%   OUT.varstats.(STATE)     : struct with between-mice summary & stats
+%   OUT.anova.(STATE).rm     : fitrm object
+%   OUT.anova.(STATE).within : ranova table (Time, Time*Genotype)
+%   OUT.anova.(STATE).between: between-subject ANOVA table (Genotype)
+%   OUT.perMouseHour.(STATE)      : wide per-mouse×per-hour table
+%   OUT.perMouseHour_long.(STATE) : long per-mouse–hour table
+% -------------------------------------------------------------------------
+
+% ----------- Parse inputs -----------
+if nargin < 2 || isempty(out_dir)
+    out_dir = pwd;
+end
+if ~isfolder(out_dir)
+    mkdir(out_dir);
+end
+
+if nargin < 3 || isempty(states_to_plot)
+    states_to_plot = ["WK","MA","NREM","REM"];
+end
+states_to_plot = string(states_to_plot(:)).';   % row string array
+
+p = inputParser;
+addParameter(p, 'showIDs', false, @(x)islogical(x) && isscalar(x));
+addParameter(p, 'showStars', true, @(x)islogical(x) && isscalar(x));
+addParameter(p, 'useFDRforStars', true, @(x)islogical(x) && isscalar(x));
+addParameter(p, 'minNperGroupForStats', 3, @(x)isscalar(x) && x>=1);
+addParameter(p, 'pointStyle', 'dots', @(s)ischar(s) || isstring(s));
+addParameter(p, 'bandAlpha', 0.2, @(x)isscalar(x) && x>=0 && x<=1);
+parse(p, varargin{:});
+
+showIDs              = p.Results.showIDs;
+showStars            = p.Results.showStars;
+useFDRforStars       = p.Results.useFDRforStars;
+minNperGroupForStats = p.Results.minNperGroupForStats;
+pointStyle           = lower(string(p.Results.pointStyle));
+bandAlpha            = p.Results.bandAlpha;
+
+P = rows_perhr;
+
+% ----------- 1) BASELINE only -----------
+cond_str    = lower(strtrim(P.condition));
+is_baseline = cond_str == "baseline";
+P = P(is_baseline, :);
+
+if isempty(P)
+    warning('No baseline rows found in rows_perhr (condition=="baseline"). Nothing to plot.');
+    OUT = struct('success', false, 'msg', 'no baseline data');
+    return;
+end
+
+OUT = struct();
+OUT.success        = true;
+OUT.states_plotted = [];
+OUT.files          = struct();
+OUT.var_files      = struct();
+OUT.stats          = struct();
+OUT.varstats       = struct();
+OUT.anova          = struct();
+OUT.perMouseHour       = struct();  % NEW
+OUT.perMouseHour_long  = struct();  % NEW
+
+% Colors
+COL_WT      = [0.6 0.6 0.6];       % grey
+COL_APP     = [0.39 0.58 0.93];    % cornflower-ish blue
+COL_WT_DOT  = [0.3 0.3 0.3];       % darker grey
+COL_APP_DOT = [0.1 0.2 0.6];       % darker blue
+
+for s = 1:numel(states_to_plot)
+    st = states_to_plot(s);
+
+    % ----------- 2) Filter to this state -----------
+    Pst = P(P.state == st, :);
+    if isempty(Pst)
+        warning('No baseline rows for state "%s". Skipping.', st);
+        continue;
+    end
+
+    G = Pst;  % shorthand
+
+    hasWT  = any(G.genotype == "WT");
+    hasAPP = any(G.genotype == "APP");
+
+    if ~hasWT && ~hasAPP
+        warning('No WT or APP data for state "%s". Skipping.', st);
+        continue;
+    end
+
+    stField = matlab.lang.makeValidName(st);   % struct field name
+
+    % ----------- 2b) Prepare data for RM ANOVA (Time × Genotype) -----------
+    all_hours = unique(G.hour_idx);
+    all_hours = sort(all_hours);
+    nH = numel(all_hours);
+
+    mice = unique(G.mouse);
+    nM   = numel(mice);
+
+    dataMat   = nan(nM, nH);   % per-mouse (rows) × hour (cols)
+    genoVec   = strings(nM,1); % genotype per mouse
+
+    for i = 1:nM
+        mID = mice(i);
+        maskMouse = (G.mouse == mID);
+
+        % genotype for this mouse
+        g_this = unique(G.genotype(maskMouse));
+        if numel(g_this) ~= 1
+            warning('Mouse %s has multiple genotypes? Using first.', string(mID));
+            genoVec(i) = g_this(1);
+        else
+            genoVec(i) = g_this;
+        end
+
+        for h = 1:nH
+            hr = all_hours(h);
+            mask = maskMouse & (G.hour_idx == hr);
+            vals = G.bouts_per_h(mask);
+            vals = vals(~isnan(vals));
+            if ~isempty(vals)
+                dataMat(i,h) = mean(vals);  % in case of duplicates
+            end
+        end
+    end
+
+    % ----------- 2c) WIDE TABLE (per mouse × per hour) -----------
+    hourNames = arrayfun(@(hr) sprintf('H%d', hr), all_hours, 'UniformOutput', false);
+    Twide = table(mice, genoVec, 'VariableNames', {'mouse','genotype'});
+    for h = 1:nH
+        Twide.(hourNames{h}) = dataMat(:,h);
+    end
+
+    OUT.perMouseHour.(stField) = Twide;
+
+    % Save wide table as CSV (one file per state)
+    csv_name_wide = sprintf('baseline_bouts_per_hour_%s_APPvsWT_wide.csv', lower(st));
+    csv_path_wide = fullfile(out_dir, csv_name_wide);
+    try
+        writetable(Twide, csv_path_wide);
+        fprintf('📄 Saved WIDE per-mouse×per-hour table for %s to: %s\n', st, csv_path_wide);
+    catch ME
+        warning('Could not save wide CSV for %s: %s', st, ME.message);
+    end
+
+    % ----------- 2d) LONG TABLE (mouse, genotype, hour_idx, value) -----------
+    long_mouse    = [];
+    long_genotype = [];
+    long_hour     = [];
+    long_value    = [];
+
+    for i = 1:nM
+        for h = 1:nH
+            val = dataMat(i,h);
+            if ~isnan(val)
+                long_mouse    = [long_mouse;    mice(i)];
+                long_genotype = [long_genotype; genoVec(i)];
+                long_hour     = [long_hour;     all_hours(h)];
+                long_value    = [long_value;    val];
+            end
+        end
+    end
+
+    Tlong = table(long_mouse, long_genotype, long_hour, long_value, ...
+        'VariableNames', {'mouse','genotype','hour_idx','bouts_per_h'});
+
+    OUT.perMouseHour_long.(stField) = Tlong;
+
+    % Save long table as CSV
+    csv_name_long = sprintf('baseline_bouts_per_hour_%s_APPvsWT_long.csv', lower(st));
+    csv_path_long = fullfile(out_dir, csv_name_long);
+    try
+        writetable(Tlong, csv_path_long);
+        fprintf('📄 Saved LONG per-mouse–hour table for %s to: %s\n', st, csv_path_long);
+    catch ME
+        warning('Could not save long CSV for %s: %s', st, ME.message);
+    end
+
+    % ----------- 2e) Build wide table for fitrm (RM ANOVA) -----------
+    WithinDesign = table(all_hours(:), 'VariableNames', {'Time'});
+    measureStr   = sprintf('%s-%s', hourNames{1}, hourNames{end});
+
+    rm = fitrm(Twide, sprintf('%s ~ genotype', measureStr), ...
+               'WithinDesign', WithinDesign);
+
+    % safe ranova/anova
+    try
+        withinTbl  = ranova(rm, 'WithinModel','Time');
+    catch
+        withinTbl = table();
+    end
+    try
+        betweenTbl = anova(rm);
+    catch
+        betweenTbl = table();
+    end
+
+    OUT.anova.(stField).rm       = rm;
+    OUT.anova.(stField).within   = withinTbl;
+    OUT.anova.(stField).between  = betweenTbl;
+
+    fprintf('\n===== 2-way RM ANOVA (Time x Genotype) for %s bouts/hour =====\n', st);
+
+    % Time and interaction
+    try
+        if ~isempty(withinTbl) && any(strcmp(withinTbl.Properties.VariableNames,"Term"))
+            rowTime = strcmp(withinTbl.Term, 'Time');
+            rowInt  = strcmp(withinTbl.Term, 'Time:genotype');
+
+            if any(rowTime) && any(strcmp(withinTbl.Properties.VariableNames,"pValueGG"))
+                p_time = withinTbl.pValueGG(rowTime);
+                fprintf('Time effect:           p = %.4g (GG-corrected)\n', p_time);
+            end
+            if any(rowInt) && any(strcmp(withinTbl.Properties.VariableNames,"pValueGG"))
+                p_int = withinTbl.pValueGG(rowInt);
+                fprintf('Time x Genotype:      p = %.4g (GG-corrected)\n', p_int);
+            end
+        end
+    catch
+        fprintf('  (Could not extract Time / Time×Genotype p-values)\n');
+    end
+
+    % Genotype main effect
+    try
+        if ~isempty(betweenTbl) && any(strcmp(betweenTbl.Properties.VariableNames,"Term"))
+            rowGen = strcmp(betweenTbl.Term, 'genotype');
+            if any(rowGen) && any(strcmp(betweenTbl.Properties.VariableNames,"pValue"))
+                p_gen = betweenTbl.pValue(rowGen);
+                fprintf('Genotype main effect: p = %.4g\n', p_gen);
+            end
+        end
+    catch
+        fprintf('  (Could not extract genotype main effect p-value)\n');
+    end
+
+    % ----------- 3) Per-hour means/SEMs + stats -----------
+    meanWT  = nan(1, nH); semWT  = nan(1, nH);
+    meanAPP = nan(1, nH); semAPP = nan(1, nH);
+
+    p_t      = nan(1, nH);
+    p_rs     = nan(1, nH);
+    cohen_d  = nan(1, nH);
+    nWT_vec  = nan(1, nH);
+    nAPP_vec = nan(1, nH);
+    max_y    = nan(1, nH);
+
+    for h = 1:nH
+        hr = all_hours(h);
+
+        valsWT  = [];
+        valsAPP = [];
+
+        if hasWT
+            maskWT = (G.genotype == "WT") & (G.hour_idx == hr);
+            valsWT = G.bouts_per_h(maskWT);
+            valsWT = valsWT(~isnan(valsWT));
+            if ~isempty(valsWT)
+                meanWT(h) = mean(valsWT);
+                semWT(h)  = std(valsWT) / sqrt(numel(valsWT));
+            end
+        end
+
+        if hasAPP
+            maskAPP = (G.genotype == "APP") & (G.hour_idx == hr);
+            valsAPP = G.bouts_per_h(maskAPP);
+            valsAPP = valsAPP(~isnan(valsAPP));
+            if ~isempty(valsAPP)
+                meanAPP(h) = mean(valsAPP);
+                semAPP(h)  = std(valsAPP) / sqrt(numel(valsAPP));
+            end
+        end
+
+        if ~isempty(valsWT) && ~isempty(valsAPP)
+            nWT_vec(h)  = numel(valsWT);
+            nAPP_vec(h) = numel(valsAPP);
+
+            [~, p_t(h)] = ttest2(valsWT, valsAPP, 'Vartype','unequal');
+            p_rs(h) = ranksum(valsWT, valsAPP);
+
+            m1 = mean(valsWT);  m2 = mean(valsAPP);
+            s1 = std(valsWT);   s2 = std(valsAPP);
+            n1 = numel(valsWT); n2 = numel(valsAPP);
+            sp = sqrt(((n1-1)*s1^2 + (n2-1)*s2^2) / max(1,(n1+n2-2)));
+            cohen_d(h) = (m2 - m1) / sp;
+        end
+
+        all_vals = [];
+        if ~isempty(valsWT),  all_vals = [all_vals; valsWT];  end %#ok<AGROW>
+        if ~isempty(valsAPP), all_vals = [all_vals; valsAPP]; end %#ok<AGROW>
+        if ~isempty(all_vals)
+            max_y(h) = max(all_vals);
+        end
+    end
+
+    % BH–FDR correction across hours
+    p_t_fdr = nan(size(p_t));
+    valid   = ~isnan(p_t);
+    pvals   = p_t(valid);
+    if ~isempty(pvals)
+        [sorted_p, sort_idx] = sort(pvals(:));
+        m = numel(sorted_p);
+        adj = sorted_p .* (m ./ (1:m)');
+        for i2 = m-1:-1:1
+            adj(i2) = min(adj(i2), adj(i2+1));
+        end
+        adj(adj>1) = 1;
+        p_fdr_vals = nan(size(pvals));
+        p_fdr_vals(sort_idx) = adj;
+        p_t_fdr(valid) = p_fdr_vals;
+    end
+
+    % ----------- 4) Time-course plot for this state -----------
+    figure('Color','w'); hold on;
+
+    useBands = any(pointStyle == ["bands","both"]);
+    useDots  = any(pointStyle == ["dots","both"]);
+
+    % --- SEM bands (WT, APP) ---
+    if useBands
+        % WT band
+        if hasWT
+            validWT = ~isnan(meanWT) & ~isnan(semWT);
+            xWT = all_hours(validWT);
+            mw  = meanWT(validWT);
+            sw  = semWT(validWT);
+            if numel(xWT) >= 2 && numel(mw) == numel(sw)
+                yu = mw + sw;
+                yl = mw - sw;
+                xp = [xWT(:); flipud(xWT(:))];
+                yp = [yl(:);  flipud(yu(:))];
+                if numel(xp) == numel(yp)
+                    patch(xp, yp, COL_WT, 'FaceAlpha', bandAlpha, 'EdgeColor','none');
+                end
+            end
+        end
+        % APP band
+        if hasAPP
+            validAPP = ~isnan(meanAPP) & ~isnan(semAPP);
+            xAPP = all_hours(validAPP);
+            ma   = meanAPP(validAPP);
+            sa   = semAPP(validAPP);
+            if numel(xAPP) >= 2 && numel(ma) == numel(sa)
+                yu = ma + sa;
+                yl = ma - sa;
+                xp = [xAPP(:); flipud(xAPP(:))];
+                yp = [yl(:);   flipud(yu(:))];
+                if numel(xp) == numel(yp)
+                    patch(xp, yp, COL_APP, 'FaceAlpha', bandAlpha, 'EdgeColor','none');
+                end
+            end
+        end
+    end
+
+    % --- Mean ± SEM lines (errorbars) ---
+    if hasWT
+        errorbar(all_hours, meanWT, semWT, '-o', ...
+            'Color', COL_WT, ...
+            'MarkerFaceColor', COL_WT, ...
+            'MarkerSize', 5, ...
+            'LineWidth', 1.2);
+    end
+    if hasAPP
+        errorbar(all_hours, meanAPP, semAPP, '-o', ...
+            'Color', COL_APP, ...
+            'MarkerFaceColor', COL_APP, ...
+            'MarkerSize', 5, ...
+            'LineWidth', 1.2);
+    end
+
+    % --- Dots (+ optional IDs) ---
+    jitterFrac = 0.25;
+    y_offset   = 0.5;
+
+    if useDots
+        for h = 1:nH
+            hr = all_hours(h);
+
+            if hasWT
+                maskWT  = (G.genotype == "WT") & (G.hour_idx == hr);
+                valsWT  = G.bouts_per_h(maskWT);
+                mWT     = G.mouse(maskWT);
+                if ~isempty(valsWT)
+                    xw = hr - 0.1 + (rand(size(valsWT)) - 0.5) * jitterFrac;
+                    plot(xw, valsWT, '.', 'Color', COL_WT_DOT, 'MarkerSize', 10);
+                    if showIDs
+                        for j = 1:numel(valsWT)
+                            thisID = char(mWT(j));
+                            text(xw(j), valsWT(j) + y_offset, thisID, ...
+                                'Rotation', 45, ...
+                                'HorizontalAlignment','left', ...
+                                'VerticalAlignment','bottom', ...
+                                'FontSize', 8, ...
+                                'Color', COL_WT_DOT);
+                        end
+                    end
+                end
+            end
+
+            if hasAPP
+                maskAPP = (G.genotype == "APP") & (G.hour_idx == hr);
+                valsAPP = G.bouts_per_h(maskAPP);
+                mAPP    = G.mouse(maskAPP);
+                if ~isempty(valsAPP)
+                    xa = hr + 0.1 + (rand(size(valsAPP)) - 0.5) * jitterFrac;
+                    plot(xa, valsAPP, '.', 'Color', COL_APP_DOT, 'MarkerSize', 10);
+                    if showIDs
+                        for j = 1:numel(valsAPP)
+                            thisID = char(mAPP(j));
+                            text(xa(j), valsAPP(j) + y_offset, thisID, ...
+                                'Rotation', 45, ...
+                                'HorizontalAlignment','left', ...
+                                'VerticalAlignment','bottom', ...
+                                'FontSize', 8, ...
+                                'Color', COL_APP_DOT);
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    xlabel('Hour from recording start');
+    ylabel(sprintf('Bouts per hour (%s)', st));
+    title(sprintf('Baseline: bouts per hour in %s (WT vs APP)', st));
+
+    if hasWT && hasAPP
+        legend({'WT mean \pm SEM','APP mean \pm SEM'}, ...
+               'Location','northoutside', ...
+               'Orientation','horizontal');
+    elseif hasWT
+        legend({'WT mean \pm SEM'}, 'Location','northoutside');
+    elseif hasAPP
+        legend({'APP mean \pm SEM'}, 'Location','northoutside');
+    end
+
+    set(gca,'Box','off','FontSize',12);
+    xlim([min(all_hours)-0.5, max(all_hours)+0.5]);
+
+    % ----------- 5) Add per-hour stars (optional, exploratory) -----------
+    if any(~isnan(max_y))
+        global_max_y = max(max_y(~isnan(max_y)));
+    else
+        global_max_y = max(G.bouts_per_h, [], 'omitnan');
+    end
+    if isempty(global_max_y) || isnan(global_max_y)
+        global_max_y = 1;
+    end
+
+    y_top  = global_max_y + 3;
+    ylim([0, y_top]);
+
+    if showStars
+        for h = 1:nH
+            if useFDRforStars
+                p_here = p_t_fdr(h);
+            else
+                p_here = p_t(h);
+            end
+            if isnan(p_here) || p_here >= 0.05
+                continue;
+            end
+            if nWT_vec(h) < minNperGroupForStats || nAPP_vec(h) < minNperGroupForStats
+                continue;
+            end
+
+            if p_here < 0.001
+                stars = '***';
+            elseif p_here < 0.01
+                stars = '**';
+            else
+                stars = '*';
+            end
+
+            y_star = max_y(h);
+            if isnan(y_star)
+                y_star = global_max_y * 0.8;
+            end
+            y_star = y_star + 1.0;
+
+            text(all_hours(h), y_star, stars, ...
+                'HorizontalAlignment','center', ...
+                'VerticalAlignment','bottom', ...
+                'FontSize', 12, ...
+                'FontWeight','bold');
+        end
+    end
+
+    % ----------- 6) Save time-course figure for this state -----------
+    if showIDs
+        id_suffix = '_withIDs';
+    else
+        id_suffix = '_noIDs';
+    end
+
+    band_suffix = '';
+    switch char(pointStyle)
+        case 'dots'
+            band_suffix = '_dots';
+        case 'bands'
+            band_suffix = '_bands';
+        case 'both'
+            band_suffix = '_bands_dots';
+        case 'none'
+            band_suffix = '_nolocal';
+    end
+
+    fname = sprintf('baseline_bouts_per_hour_%s_APPvsWT%s%s.png', ...
+                    lower(st), id_suffix, band_suffix);
+    out_file = fullfile(out_dir, fname);
+    saveas(gcf, out_file);
+
+    OUT.states_plotted = [OUT.states_plotted, st];
+    OUT.files.(stField) = out_file;
+
+    fprintf('✅ Baseline bouts/hour time-course plot for %s saved to: %s\n', st, out_file);
+
+    % ----------- 7) Store per-hour stats table for this state -----------
+    stats_idx = ~isnan(p_t);
+    if any(stats_idx)
+        stats_tbl = table( ...
+            all_hours(stats_idx), ...
+            nWT_vec(stats_idx)', ...
+            nAPP_vec(stats_idx)', ...
+            meanWT(stats_idx)', ...
+            meanAPP(stats_idx)', ...
+            p_t(stats_idx)', ...
+            p_t_fdr(stats_idx)', ...
+            p_rs(stats_idx)', ...
+            cohen_d(stats_idx)', ...
+            'VariableNames', {'Hour','nWT','nAPP','MeanWT','MeanAPP', ...
+                              'p_ttest','p_ttest_FDR','p_ranksum','Cohen_d'});
+        fprintf('\nBaseline bouts/hour (%s): WT vs APP per-hour stats (exploratory)\n', st);
+        disp(stats_tbl);
+        OUT.stats.(stField) = stats_tbl;
+    else
+        fprintf('\n[Stats %s] No hours with both WT and APP present. No per-hour tests.\n', st);
+        OUT.stats.(stField) = table();
+    end
+
+    % ----------- 8) BETWEEN-MICE variability plot -----------------------
+    % For each mouse: mean bouts/hour across *all baseline hours* for this state
+    mean_mouse = nan(nM,1);
+    for i = 1:nM
+        row = dataMat(i,:);
+        row = row(~isnan(row));
+        if ~isempty(row)
+            mean_mouse(i) = mean(row);
+        end
+    end
+
+    maskWTm  = (genoVec == "WT");
+    maskAPPm = (genoVec == "APP");
+
+    WT_means  = mean_mouse(maskWTm);
+    APP_means = mean_mouse(maskAPPm);
+
+    WT_means  = WT_means(~isnan(WT_means));
+    APP_means = APP_means(~isnan(APP_means));
+
+    nWTm  = numel(WT_means);
+    nAPPm = numel(APP_means);
+
+    mean_WT = mean(WT_means,'omitnan');
+    mean_APP = mean(APP_means,'omitnan');
+
+    sd_WT = std(WT_means,'omitnan');
+    sd_APP = std(APP_means,'omitnan');
+
+    cv_WT = sd_WT / max(mean_WT, eps);
+    cv_APP = sd_APP / max(mean_APP, eps);
+
+    % stats on between-mice variability
+    p_var   = NaN;   % equality of variance
+    p_tmean = NaN;   % difference in means
+    d_mean  = NaN;   % Cohen d (means)
+
+    if nWTm >= 2 && nAPPm >= 2
+        % F-test for equality of variances
+        try
+            [~, p_var] = vartest2(WT_means, APP_means);
+        catch
+            p_var = NaN;
+        end
+
+        % difference in mean bouts/hour
+        [~, p_tmean] = ttest2(WT_means, APP_means, 'Vartype','unequal');
+
+        m1 = mean_WT;  m2 = mean_APP;
+        s1 = sd_WT;    s2 = sd_APP;
+        n1 = nWTm;     n2 = nAPPm;
+        sp = sqrt(((n1-1)*s1^2 + (n2-1)*s2^2) / max(1,(n1+n2-2)));
+        d_mean = (m2 - m1) / sp;
+    end
+
+    % variability figure (between-mice)
+    figure('Color','w'); hold on;
+    Xpos = [1 2];
+    barWidth = 0.5;
+
+    bar(Xpos(1), mean_WT,  barWidth, 'FaceColor', COL_WT,  'EdgeColor','none');
+    bar(Xpos(2), mean_APP, barWidth, 'FaceColor', COL_APP, 'EdgeColor','none');
+
+    % error bars = SD across mice (between-mice variability)
+    errorbar(Xpos(1), mean_WT,  sd_WT,  'k', 'LineStyle','none', 'LineWidth',1);
+    errorbar(Xpos(2), mean_APP, sd_APP, 'k', 'LineStyle','none', 'LineWidth',1);
+
+    % jittered dots per mouse
+    jit = 0.12;
+    if nWTm > 0
+        xw = Xpos(1) + (rand(size(WT_means))-0.5)*2*jit;
+        plot(xw, WT_means, '.', 'Color', COL_WT_DOT, 'MarkerSize', 12);
+        if showIDs
+            mWT_ids = mice(maskWTm);
+            mWT_ids = mWT_ids(~isnan(mean_mouse(maskWTm)));
+            for j = 1:numel(WT_means)
+                text(xw(j), WT_means(j), char(mWT_ids(j)), ...
+                     'Rotation', 45, ...
+                     'HorizontalAlignment','left', ...
+                     'VerticalAlignment','bottom', ...
+                     'FontSize',8, ...
+                     'Color',COL_WT_DOT);
+            end
+        end
+    end
+    if nAPPm > 0
+        xa = Xpos(2) + (rand(size(APP_means))-0.5)*2*jit;
+        plot(xa, APP_means, '.', 'Color', COL_APP_DOT, 'MarkerSize', 12);
+        if showIDs
+            mAPP_ids = mice(maskAPPm);
+            mAPP_ids = mAPP_ids(~isnan(mean_mouse(maskAPPm)));
+            for j = 1:numel(APP_means)
+                text(xa(j), APP_means(j), char(mAPP_ids(j)), ...
+                     'Rotation', 45, ...
+                     'HorizontalAlignment','left', ...
+                     'VerticalAlignment','bottom', ...
+                     'FontSize',8, ...
+                     'Color',COL_APP_DOT);
+            end
+        end
+    end
+
+    xlim([0.5 2.5]);
+    ylabel(sprintf('Per-mouse mean bouts/hour (%s)', st));
+    set(gca,'XTick',Xpos,'XTickLabel',{'WT','APP'},'FontSize',12);
+    title(sprintf('Baseline: between-mice variability of %s bouts/hour', st));
+    set(gca,'Box','off');
+
+    % annotate p-values (optional simple text)
+    ymax = max([WT_means;APP_means],[],'omitnan');
+    if isempty(ymax) || isnan(ymax)
+        ymax = 1;
+    end
+    ylim([0, ymax*1.4]);
+
+    % --- Text with numeric p-values (variance + mean) ---
+    if ~isnan(p_var) || ~isnan(p_tmean)
+        txt = sprintf('var-test p=%.3f | mean t-test p=%.3f | d=%.2f', ...
+                      p_var, p_tmean, d_mean);
+        text(1.5, ymax*1.25, txt, ...
+             'HorizontalAlignment','center', ...
+             'VerticalAlignment','bottom', ...
+             'FontSize',10);
+    end
+
+    % --- Significance stars for mean difference (WT vs APP) ---
+    starStr = '';
+    if ~isnan(p_tmean)
+        if p_tmean < 0.001
+            starStr = '***';
+        elseif p_tmean < 0.01
+            starStr = '**';
+        elseif p_tmean < 0.05
+            starStr = '*';
+        end
+    end
+
+    if ~isempty(starStr)
+        % horizontal line above the two bars
+        y_star_line = ymax * 1.10;
+        line([1 2], [y_star_line y_star_line], 'Color','k', 'LineWidth', 1.2);
+
+        % star label slightly above the line
+        text(1.5, ymax * 1.15, starStr, ...
+             'HorizontalAlignment','center', ...
+             'VerticalAlignment','bottom', ...
+             'FontSize', 14, ...
+             'FontWeight','bold');
+    end
+
+    % save variability figure
+    if showIDs
+        id_suffix2 = '_withIDs';
+    else
+        id_suffix2 = '_noIDs';
+    end
+    fname_var = sprintf('baseline_bouts_per_hour_%s_APPvsWT_betweenmice%s.png', ...
+                        lower(st), id_suffix2);
+    out_file_var = fullfile(out_dir, fname_var);
+    saveas(gcf, out_file_var);
+    OUT.var_files.(stField) = out_file_var;
+    fprintf('✅ Between-mice variability plot for %s saved to: %s\n', st, out_file_var);
+
+    % store variability stats
+    VAR = struct();
+    VAR.per_mouse = table( ...
+        mice, genoVec, mean_mouse, ...
+        'VariableNames', {'mouse','genotype','mean_bouts_per_h'});
+    VAR.genotype_summary = table( ...
+        ["WT";"APP"], ...
+        [nWTm; nAPPm], ...
+        [mean_WT; mean_APP], ...
+        [sd_WT; sd_APP], ...
+        [cv_WT; cv_APP], ...
+        'VariableNames', {'Genotype','n','Mean_bouts_per_h','SD_between_mice','CV_between_mice'});
+    VAR.p_vartest2_varEqual = p_var;
+    VAR.p_ttest_mean        = p_tmean;
+    VAR.Cohen_d_mean        = d_mean;
+
+    OUT.varstats.(stField) = VAR;
+end
+end

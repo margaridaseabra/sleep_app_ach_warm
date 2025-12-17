@@ -1,0 +1,18 @@
+Sleep architecture summary
+Source CSV : /Users/margaridaseabra/24.11scores/20251012_baseline_mouse12_WT_scored_scores_1Hz.csv
+Output dir : /Users/margaridaseabra/sleep_app_ach_warm/Sleep Architecture Analysis/group_out
+Hours      : 9
+Include MA : 1
+MA bouts   : 156  | MA seconds: 1183
+MA rule    : Wake bouts ≤ 15 s reclassified to MA
+
+Overall metrics:
+  WK    bouts=  64  total=  11750s  mean= 183.6s
+  NREM  bouts= 220  total=  15172s  mean=  69.0s
+  REM   bouts=  34  total=   3430s  mean= 100.9s
+  MA    bouts= 156  total=   1183s  mean=   7.6s
+
+Files:
+  /Users/margaridaseabra/sleep_app_ach_warm/Sleep Architecture Analysis/group_out/20251012_baseline_mouse12_WT_scored_arch_per_hour.csv
+  /Users/margaridaseabra/sleep_app_ach_warm/Sleep Architecture Analysis/group_out/20251012_baseline_mouse12_WT_scored_arch_overall.csv
+  /Users/margaridaseabra/sleep_app_ach_warm/Sleep Architecture Analysis/group_out/20251012_baseline_mouse12_WT_scored_arch_runs.csv

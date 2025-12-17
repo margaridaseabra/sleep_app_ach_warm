@@ -35,7 +35,7 @@ function plot_sigma_modulation_by_condition(outRoot)
     conditions    = tbl.Condition(sort(idxFirst))';
 
     % Common modulation frequency axis for group PSD
-    F_common = (0:0.001:0.15)';   % 0–0.15 Hz, good resolution
+    F_common = (0.02:0.001:0.15)';   % 0–0.15 Hz, good resolution
 
     for ci = 1:numel(conditions)
         cond = conditions(ci);
@@ -72,15 +72,14 @@ function plot_sigma_modulation_by_condition(outRoot)
                 OUT = S.OUT;
 
                 f  = OUT.sigma.mod_f(:);
-                ps = OUT.sigma.mod_psd(:);     % raw PSD of envelope
+                ps = OUT.sigma.mod_psd_plot(:);          % raw PSD of envelope
+                
+                % Interpolate onto common freq axis (start at mod_f_min to avoid extrap):
+                F_common = (0.01:0.001:0.15)';
 
-                % Normalise to max=1 for plotting (A.U.)
-                ps = ps ./ max(ps);
+                ps_common = interp1(f, ps, F_common, 'linear', NaN);
 
-                % Interpolate onto common freq axis
-                ps_common = interp1(f, ps, F_common, 'linear', 'extrap');
-
-                allPSD(:, end+1) = ps_common; %#ok<AGROW>
+                allPSD(:, end+1) = ps_common;
             end
 
             if isempty(allPSD)

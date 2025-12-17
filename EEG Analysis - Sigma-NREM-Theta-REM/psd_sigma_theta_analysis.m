@@ -228,34 +228,67 @@ if verbose
         fprintf('[NOTE] <60 s of REM: theta modulation PSD may be noisy.\n');
     end
 end
+% ---- Classic REM theta power (for literature-style metrics) ----
+frange = 0.5:0.25:50;   % Hz, or choose your resolution
+[psd_rem, f_psd] = pwelch(eeg_rem, hamming(round(fs*4)), [], frange, fs);
+
+theta_band = [5 9];
+idx_theta  = f_psd >= theta_band(1) & f_psd <= theta_band(2);
+
+theta_abs_power = trapz(f_psd(idx_theta), psd_rem(idx_theta));
+[~, k_theta_peak] = max(psd_rem(idx_theta));
+theta_peak_freq  = f_psd(idx_theta);
+theta_peak_freq  = theta_peak_freq(k_theta_peak);
+
+total_power_05_50 = trapz(f_psd, psd_rem);
+theta_rel_power   = theta_abs_power / total_power_05_50;
+
+OUT.theta.abs_power_rem   = theta_abs_power;
+OUT.theta.rel_power_rem   = theta_rel_power;
+OUT.theta.peak_freq_rem   = theta_peak_freq;
 
 %% --------------- Sigma envelope modulation PSD (NREM) ----------------
-[sig_f_mod, sig_psd_mod, sig_power, sig_peak_f, sig_peak_amp] = ...
-    modulation_psd(eeg_nrem, fs, S.bands.sigma, S.mod_f_max, ...
-                   S.env_target_fs, S.env_win_sec, verbose, 'NREM sigma');
+mod_f_min = 0.01;  % NEW: lower bound for modulation freq
 
-%% --------------- Theta envelope modulation PSD (REM) -----------------
-[th_f_mod, th_psd_mod, th_power, th_peak_f, th_peak_amp] = ...
-    modulation_psd(eeg_rem, fs, S.bands.theta, S.mod_f_max, ...
-                   S.env_target_fs, S.env_win_sec, verbose, 'REM theta');
+% Sigma (NREM)
+[sig_f_mod, sig_psd_whiten, sig_psd_plot, sig_total_power, ...
+    sig_bump_power, sig_peak_f, sig_peak_amp] = ...
+    modulation_psd_bump(eeg_nrem, fs, S.bands.sigma, ...
+                        mod_f_min, S.mod_f_max, ...
+                        S.env_target_fs, S.env_win_sec, ...
+                        verbose, 'NREM sigma');
 
+% Theta (REM)
+[th_f_mod, th_psd_whiten, th_psd_plot, th_total_power, ...
+    th_bump_power, th_peak_f, th_peak_amp] = ...
+    modulation_psd_bump(eeg_rem, fs, S.bands.theta, ...
+                        mod_f_min, S.mod_f_max, ...
+                        S.env_target_fs, S.env_win_sec, ...
+                        verbose, 'REM theta');
 %% --------------- Pack metrics into OUT struct ------------------------
-OUT.sigma.mod_f       = sig_f_mod;
-OUT.sigma.mod_psd     = sig_psd_mod;       % raw PSD of sigma envelope
-OUT.sigma.mod_power   = sig_power;         % area under curve
-OUT.sigma.mod_peak_f  = sig_peak_f;        % peak modulation frequency
-OUT.sigma.mod_peak_amp= sig_peak_amp;      % peak amplitude
+OUT.sigma.mod_f          = sig_f_mod;
+OUT.sigma.mod_psd_whiten = sig_psd_whiten;   % for metrics
+OUT.sigma.mod_psd_plot   = sig_psd_plot;     % already normalized for plotting
+OUT.sigma.mod_total      = sig_total_power;
+OUT.sigma.mod_bump       = sig_bump_power;
+OUT.sigma.mod_peak_f     = sig_peak_f;
+OUT.sigma.mod_peak_amp   = sig_peak_amp;
 
-OUT.theta.mod_f       = th_f_mod;
-OUT.theta.mod_psd     = th_psd_mod;
-OUT.theta.mod_power   = th_power;
-OUT.theta.mod_peak_f  = th_peak_f;
-OUT.theta.mod_peak_amp= th_peak_amp;
+OUT.theta.mod_f          = th_f_mod;
+OUT.theta.mod_psd_whiten = th_psd_whiten;
+OUT.theta.mod_psd_plot   = th_psd_plot;
+OUT.theta.mod_total      = th_total_power;
+OUT.theta.mod_bump       = th_bump_power;
+OUT.theta.mod_peak_f     = th_peak_f;
+OUT.theta.mod_peak_amp   = th_peak_amp;
+% Backwards-compatible field names for batch scripts
+OUT.sigma.mod_power = sig_bump_power;   % alias -> bump power
+OUT.theta.mod_power = th_bump_power;
 
-OUT.params = S;
-OUT.mouse_id = S.mouse_id;
-OUT.session  = S.session;
-OUT.eeg_file = eeg_mat_file;
+OUT.params      = S;
+OUT.mouse_id    = S.mouse_id;
+OUT.session     = S.session;
+OUT.eeg_file    = eeg_mat_file;
 OUT.scores_file = scores_csv;
 
 %% --------------- Save metrics table for group stats ------------------
@@ -268,13 +301,14 @@ csv_name = fullfile(S.out_dir, [base '.csv']);
 
 metrics_tbl = table( ...
     {S.mouse_id}, {S.session}, ...
-    sig_power, sig_peak_f, sig_peak_amp, ...
-    th_power,  th_peak_f,  th_peak_amp, ...
+    sig_bump_power, sig_peak_f, sig_peak_amp, ...
+    th_bump_power, th_peak_f, th_peak_amp, ...
     'VariableNames', {'mouse','session', ...
                       'sigma_mod_power','sigma_mod_peak_f','sigma_mod_peak_amp', ...
                       'theta_mod_power','theta_mod_peak_f','theta_mod_peak_amp'});
 writetable(metrics_tbl, csv_name);
 OUT.files.metrics_csv = csv_name;
+
 
 %% --------------- Plot modulation PSDs + 3 summary bar plots ----------
 fig = figure('Name','Sigma/Theta modulation PSD', ...
@@ -284,8 +318,8 @@ tstr = sprintf('%s – %s', S.mouse_id, S.session);
 sgtitle(tstr);
 
 % --- Normalize PSDs for plotting (A.U.), but keep raw values for metrics
-sig_psd_norm = sig_psd_mod / max(sig_psd_mod);
-th_psd_norm  = th_psd_mod  / max(th_psd_mod);
+sig_psd_norm = sig_psd_plot;  % already normalized
+th_psd_norm  = th_psd_plot;
 
 % Layout: 2 rows x 3 columns
 % (1) NREM sigma modulation PSD (0–0.15 Hz)
@@ -312,7 +346,7 @@ box off;
 
 % (2) Modulation power
 subplot(2,3,2);
-bar_data_power = [sig_power; th_power];
+bar_data_power = [sig_bump_power; th_bump_power];
 bar(bar_data_power);
 set(gca,'XTick',1:2,'XTickLabel',{'Sigma (NREM)','Theta (REM)'});
 ylabel('Modulation power (raw units)');
@@ -398,13 +432,21 @@ eeg_bp = filtfilt(b,a,eeg_state);
 % 2) Get the instantaneous amplitude (envelope) => "power" over time
 env = abs(hilbert(eeg_bp));
 
-% 3) Downsample the envelope to a manageable sampling rate, e.g. ~20 Hz
+% 3) Downsample the envelope to a manageable sampling rate
 decim = max(1, floor(fs / env_target_fs));
 env_ds = decimate(env, decim);
 fs_env = fs / decim;
 
-% Remove DC / slow offset so we don't get a massive spike at ~0 Hz
-env_ds = detrend(env_ds, 'constant');   % subtract mean
+% ----- NEW: remove slow polynomial trend (like lab template) -----
+x = (1:numel(env_ds))';
+% 5th-order polynomial detrend; tune order if needed (3–5 is typical)
+[p, ~, mu] = polyfit(x, env_ds, 5);
+trend      = polyval(p, x, [], mu);
+env_ds_detr = env_ds - trend;
+
+% You can skip the old constant detrend now; it's already removed
+% env_ds_detr is what we'll use for Welch
+
 
 
 if verbose
@@ -413,7 +455,7 @@ if verbose
 end
 
 % 4) Compute PSD of the envelope (slow modulations) using Welch
-L = numel(env_ds);
+L = numel(env_ds_detr);
 win_len = min(round(env_win_sec*fs_env), L);
 if win_len < 10
     % if very little data, just use the whole segment as one window
@@ -423,19 +465,14 @@ win     = hamming(win_len);
 nover   = floor(win_len/2);
 nfft    = max(512, 2^nextpow2(win_len));
 
-[psd_all, f_all] = pwelch(env_ds, win, nover, nfft, fs_env);
+[psd_all, f_all] = pwelch(env_ds_detr, win, nover, nfft, fs_env);
 
 % 5) Keep only modulation frequencies between mod_f_min and mod_f_max
-mod_f_min = 0.01;  % Hz, i.e. ignore fluctuations slower than 1/0.01 = 100 s
+mod_f_min = 0.02;  % Hz, i.e. ignore fluctuations slower than 1/0.01 = 100 s
 idx = (f_all >= mod_f_min) & (f_all <= mod_f_max);
 
 f_mod   = f_all(idx);
 psd_mod = psd_all(idx);
-
-
-if isempty(f_mod)
-    error('%s: no frequency bins <= %.3f Hz in envelope PSD.', label, mod_f_max);
-end
 
 % 6) Summary metrics on this modulation PSD
 total_power = trapz(f_mod, psd_mod);     % area under curve
@@ -446,4 +483,101 @@ if verbose
     fprintf('%s: total_power=%.4g, peak_f=%.4f Hz, peak_amp=%.4g\n', ...
         label, total_power, peak_f, peak_amp);
 end
+end
+function [f_mod, psd_whiten, psd_plot, total_power, bump_power, peak_f, peak_amp] = ...
+    modulation_psd_bump(eeg_state, fs, carrier_band, mod_f_min, mod_f_max, ...
+                        env_target_fs, env_win_sec, verbose, label)
+% MODULATION_PSD_BUMP
+%   - Band-pass EEG in carrier band (sigma/theta)
+%   - Hilbert envelope
+%   - Downsample envelope
+%   - Polynomial detrend (remove slow drift)
+%   - Welch PSD of envelope (slow modulations)
+%   - Whiten PSD in log–log space (remove 1/f slope)
+%   - Return:
+%       f_mod         : modulation frequency axis
+%       psd_whiten    : whitened PSD (for metrics)
+%       psd_plot      : normalized PSD (for plotting)
+%       total_power   : area under whitened PSD
+%       bump_power    : area around the main bump
+%       peak_f        : bump frequency
+%       peak_amp      : bump height (whitened PSD)
+
+% 1) Band-pass filter EEG in carrier band
+Wn = carrier_band / (fs/2);
+[b,a] = butter(4, Wn);                        % 4th-order Butterworth
+eeg_bp = filtfilt(b,a,eeg_state);
+
+% 2) Envelope (instantaneous amplitude)
+env = abs(hilbert(eeg_bp));
+
+% 3) Downsample envelope
+decim = max(1, floor(fs / env_target_fs));
+env_ds = decimate(env, decim);
+fs_env = fs / decim;
+
+% 4) Remove slow polynomial trend (similar to lab template)
+x = (1:numel(env_ds))';
+[p,~,mu] = polyfit(x, env_ds, 5);             % 5th-order trend
+trend    = polyval(p, x, [], mu);
+env_ds_detr = env_ds - trend;
+
+if verbose
+    fprintf('%s: env_fs = %.2f Hz, length = %.1f s\n', ...
+        label, fs_env, numel(env_ds_detr)/fs_env);
+end
+
+% 5) Welch PSD of detrended envelope
+L       = numel(env_ds_detr);
+win_len = min(round(env_win_sec*fs_env), L);
+if win_len < 10
+    win_len = L;
+end
+win   = hamming(win_len);
+nover = floor(win_len/2);
+nfft  = max(512, 2^nextpow2(win_len));
+
+[psd_all, f_all] = pwelch(env_ds_detr, win, nover, nfft, fs_env);
+
+% 6) Frequency range of interest
+idx = (f_all >= mod_f_min) & (f_all <= mod_f_max);
+f_mod    = f_all(idx);
+psd_raw  = psd_all(idx);
+
+if isempty(f_mod)
+    error('%s: no frequency bins between %.3f and %.3f Hz.', ...
+          label, mod_f_min, mod_f_max);
+end
+
+% 7) Whiten PSD in log–log space (remove 1/f-like slope)
+logf = log10(f_mod(:));
+logp = log10(psd_raw(:));
+
+% fit straight line logP ≈ a*logf + b
+coef   = polyfit(logf, logp, 1);
+trend  = polyval(coef, logf);
+logp_d = logp - trend;                % detrended (whitened)
+psd_whiten = 10.^logp_d;              % back to linear scale
+
+% 8) Summary metrics on whitened PSD
+total_power = trapz(f_mod, psd_whiten);
+
+[peak_amp, k] = max(psd_whiten);
+peak_f = f_mod(k);
+
+% bump power in ±0.01 Hz window around peak, clipped to [mod_f_min, mod_f_max]
+bump_half_width = 0.01;  % adjust if needed
+idx_bump = (f_mod >= max(mod_f_min, peak_f - bump_half_width)) & ...
+           (f_mod <= min(mod_f_max, peak_f + bump_half_width));
+
+bump_power = trapz(f_mod(idx_bump), psd_whiten(idx_bump));
+
+if verbose
+    fprintf('%s: total=%.4g, bump=%.4g, peak_f=%.4f Hz, peak_amp=%.4g\n', ...
+        label, total_power, bump_power, peak_f, peak_amp);
+end
+
+% 9) Version for plotting: normalize per mouse
+psd_plot = psd_whiten / max(psd_whiten);   % or / trapz(f_mod, psd_whiten)
+
 end

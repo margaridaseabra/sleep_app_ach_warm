@@ -7,9 +7,9 @@ function run_sigma_theta_batch(eegDir, scoreDir, outRoot)
 %   - per-session outputs under outRoot/genotype/condition/mouseID
 %   - a group CSV: outRoot/SigmaTheta_modulation_allmice.csv
 %
-% Assumes:
-%   EEG .mat names like:  20251023-drugs_mouse3_notched50Hz_bw3.mat
-%   CSV scores like:      20251023-drugs-mouse3-WT_scored_scores_1Hz.csv
+% Assumes NOW:
+%   EEG .mat names like:  20251023-drugs-mouse3_APP.mat
+%   CSV scores like:      20251023_drugs_mouse3_APP_scored_scores_1Hz.csv
 %
 % Uses parse_meta_from_scorefile.m to read condition/mouse/genotype.
 
@@ -19,11 +19,12 @@ function run_sigma_theta_batch(eegDir, scoreDir, outRoot)
     if ~exist(outRoot,'dir'); mkdir(outRoot); end
 
     % ---- SLEEP CODES: EDIT if your numeric codes differ ----
-    % Example: 1=Wake, 4=NREM, 9=REM, 15=MA
+    % Example here is: 0=Wake, 1=NREM, 2=REM, 15=MA
     codes = struct('WK',0,'NREM',1,'REM',2,'MA',15);
 
     % ---- Find EEG files ----
-    eegFiles = dir(fullfile(eegDir, '*notched50Hz_bw3*.mat'));
+    % 🔧 FIX 1: actually list *.mat, not ".mat"
+    eegFiles = dir(fullfile(eegDir, '*.mat'));
     if isempty(eegFiles)
         error('No EEG files found in %s', eegDir);
     end
@@ -34,16 +35,19 @@ function run_sigma_theta_batch(eegDir, scoreDir, outRoot)
         eegFile = fullfile(eegDir, eegFiles(k).name);
         [~, eegName] = fileparts(eegFiles(k).name);
 
-        % 1) Remove "_notched..." suffix
+        % 1) Remove "_notched..." suffix if it exists (keeps things robust)
         eegBase = regexprep(eegName, '_notched.*$', '');
-        %    e.g. 20251023-drugs_mouse3
+        %    e.g. 20251023-drugs-mouse3_APP
 
-        % 2) Replace "_" with "-" to match CSV style
-        patternBase = strrep(eegBase, '_', '-');
-        %    e.g. 20251023-drugs-mouse3
+        % 2) Replace "-" with "_" to match CSV style
+        % 🔧 FIX 2: direction of replacement
+        %    20251023-drugs-mouse3_APP -> 20251023_drugs_mouse3_APP
+        patternBase = strrep(eegBase, '-', '_');
 
         % 3) Look for matching score CSV
-        scorePattern = sprintf('%s-*_scored_scores_1Hz*.csv', patternBase);
+        % 🔧 FIX 3: underscores + wildcard before "scored_scores_1Hz"
+        %    20251023_drugs_mouse3_APP*scored_scores_1Hz.csv
+        scorePattern = sprintf('%s*scored_scores_1Hz.csv', patternBase);
         scoreCandidates = dir(fullfile(scoreDir, scorePattern));
 
         if isempty(scoreCandidates)
@@ -86,24 +90,30 @@ function run_sigma_theta_batch(eegDir, scoreDir, outRoot)
 
         % ---- Append one row to the group summary table ----
         newRow = table( ...
-            string(mouseID), ...
-            string(genotype), ...
-            string(condition), ...
-            OUT.sigma.mod_power, ...
-            OUT.sigma.mod_peak_f, ...
-            OUT.sigma.mod_peak_amp, ...
-            OUT.theta.mod_power, ...
-            OUT.theta.mod_peak_f, ...
-            OUT.theta.mod_peak_amp, ...
-            'VariableNames', {'MouseID','Genotype','Condition', ...
-                              'sigma_mod_power','sigma_mod_peak_f','sigma_mod_peak_amp', ...
-                              'theta_mod_power','theta_mod_peak_f','theta_mod_peak_amp'});
+            string(mouseID), ...                % 1
+            string(genotype), ...              % 2
+            string(condition), ...             % 3
+            OUT.sigma.mod_power, ...           % 4
+            OUT.sigma.mod_peak_f, ...          % 5
+            OUT.sigma.mod_peak_amp, ...        % 6
+            OUT.theta.mod_power, ...           % 7
+            OUT.theta.mod_peak_f, ...          % 8
+            OUT.theta.mod_peak_amp, ...        % 9
+            OUT.theta.abs_power_rem, ...       % 10
+            OUT.theta.rel_power_rem, ...       % 11
+            OUT.theta.peak_freq_rem, ...       % 12
+            'VariableNames', { ...
+                'MouseID','Genotype','Condition', ...
+                'sigma_mod_power','sigma_mod_peak_f','sigma_mod_peak_amp', ...
+                'theta_mod_power','theta_mod_peak_f','theta_mod_peak_amp', ...
+                'theta_abs_power','theta_rel_power','theta_peak_freq' ...
+            });
 
-        allTbl = [allTbl; newRow]; %#ok<AGROW>
+        allTbl = [allTbl; newRow]; 
     end
 
     % ---- Save big CSV for stats ----
     outCsv = fullfile(outRoot, 'SigmaTheta_modulation_allmice.csv');
     writetable(allTbl, outCsv);
-    fprintf('\n📁 Saved group sigma/theta modulation summary to:\n   %s\n', outCsv);
+    fprintf('\n Saved group sigma/theta modulation summary to:\n   %s\n', outCsv);
 end

@@ -1,0 +1,9 @@
+mouse;genotype;H0;H1;H2;H3;H4;H5;H6;H7;H8;H9
+mouse1;APP;12;14;10;13;5;7;6;9;11;3
+mouse10;APP;5;12;11;9;7;8;6;13;6;NaN
+mouse11;WT;4;6;11;6;8;9;11;11;0;NaN
+mouse12;WT;7;14;3;8;1;7;9;7;8;NaN
+mouse2;WT;6;11;6;11;11;6;10;8;0;NaN
+mouse3;APP;15;3;12;4;4;8;4;NaN;NaN;NaN
+mouse4;WT;8;4;9;6;7;5;3;9;5;NaN
+mouse8;WT;8;13;15;5;9;9;5;4;7;9
