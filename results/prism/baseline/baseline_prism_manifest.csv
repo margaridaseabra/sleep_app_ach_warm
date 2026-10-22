@@ -1,0 +1,6 @@
+time_bin,description,recommended_role
+WHOLE,Entire available baseline recording,sensitivity
+ZT3_9,Common continuous first 6 h (primary overall window),primary
+ZT3_6,First 3 h,primary_time_resolved
+ZT6_9,Second 3 h,primary_time_resolved
+ZT9_12,Third 3 h (exploratory when coverage is incomplete),exploratory

@@ -1,0 +1,17 @@
+mouse_id,genotype,sex,cohort
+mouse1,APP,,thesis
+mouse2,WT,,thesis
+mouse3,APP,,thesis
+mouse4,WT,,thesis
+mouse8,WT,,thesis
+mouse10,APP,,thesis
+mouse11,WT,,thesis
+mouse12,WT,,thesis
+mouse59,APP,M,new
+mouse61,APP,M,new
+mouse63,APP,M,new
+mouse64,APP,F,new
+mouse72,APP,F,new
+mouse66,WT,F,new
+mouse68,WT,F,new
+mouse70,WT,F,new

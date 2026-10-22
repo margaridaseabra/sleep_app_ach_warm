@@ -1,0 +1,17 @@
+mouse_id,genotype,cohort,sex,WHOLE,ZT3_9,ZT3_6,ZT6_9,ZT9_12
+mouse11,WT,original,,75,75,60,84,
+mouse12,WT,original,,63,62,67,57.5,
+mouse2,WT,original,,47,46,43,50,
+mouse4,WT,original,,46,49,43.5,52,41
+mouse8,WT,original,,49,53,60.5,49,43
+mouse1,APP,original,,43,41,37.5,46.5,51
+mouse10,APP,original,,24.5,24,24,24,
+mouse3,APP,original,,33,33,30,36,
+mouse66,WT,new,F,51,54,64.5,43,44.5
+mouse68,WT,new,F,78,77.5,71,80,79
+mouse70,WT,new,F,80,80,85,78,
+mouse59,APP,new,M,40,37.5,40.5,35.5,43
+mouse61,APP,new,M,38,39,33,42,38
+mouse63,APP,new,M,44,40,36,43,46.5
+mouse64,APP,new,F,50,50,56,44,50.5
+mouse72,APP,new,F,45,45,45.5,44,49
