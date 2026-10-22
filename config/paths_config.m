@@ -46,6 +46,10 @@ P.new_scores = fullfile( ...
 P.mice = fullfile(P.repo,'config','mice.csv');
 P.sessions = fullfile(P.repo,'config','sessions.csv');
 
+% Experimental manipulation timing registries.
+P.warming_times = fullfile(P.repo,'config','warming_times.csv');
+P.drug_times = fullfile(P.repo,'config','drug_times.csv');
+
 P.outputs = fullfile(P.repo,'outputs');
 P.sleep_output = fullfile(P.outputs,'sleep_architecture');
 P.ach_output = fullfile(P.outputs,'ach');

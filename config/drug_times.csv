@@ -1,0 +1,16 @@
+session_id,mouse_id,cohort,genotype,batch,saline_elapsed_s,saline_elapsed_hms,drug_elapsed_s,drug_elapsed_hms,timing_source,source_file,precision,include_analysis,notes
+20251022_mouse1_donepezil,mouse1,thesis,APP,october,,,11691.0,03:14:51,october_timing_workbook,drugs-times-octbatch.xlsx,second_from_workbook,1,October workbook contains drug start time only; saline time was not present and is intentionally left blank.
+20251022_mouse2_donepezil,mouse2,thesis,WT,october,,,12191.0,03:23:11,october_timing_workbook,drugs-times-octbatch.xlsx,second_from_workbook,1,October workbook contains drug start time only; saline time was not present and is intentionally left blank.
+20251024_mouse10_donepezil,mouse10,thesis,APP,october,,,10584.0,02:56:24,october_timing_workbook,drugs-times-octbatch.xlsx,second_from_workbook,1,October workbook contains drug start time only; saline time was not present and is intentionally left blank.
+20251023_mouse3_donepezil,mouse3,thesis,APP,october,,,11955.0,03:19:15,october_timing_workbook,drugs-times-octbatch.xlsx,second_from_workbook,1,October workbook contains drug start time only; saline time was not present and is intentionally left blank.
+20251022_mouse4_donepezil,mouse4,thesis,WT,october,,,11307.0,03:08:27,october_timing_workbook,drugs-times-octbatch.xlsx,second_from_workbook,1,October workbook contains drug start time only; saline time was not present and is intentionally left blank.
+20251026_mouse12_donepezil,mouse12,thesis,WT,october,,,12124.0,03:22:04,october_timing_workbook,drugs-times-octbatch.xlsx,second_from_workbook,1,October workbook contains drug start time only; saline time was not present and is intentionally left blank.
+20251024_mouse11_donepezil,mouse11,thesis,WT,october,,,10473.0,02:54:33,october_timing_workbook,drugs-times-octbatch.xlsx,second_from_workbook,1,October workbook contains drug start time only; saline time was not present and is intentionally left blank.
+20260604_mouse59_donepezil_2,mouse59,new,APP,june,9420,02:37:00,11100,03:05:00,handwritten_lab_notebook,IMG_0417.jpg,nearest_minute,1,Transcribed from June drug timing notes.
+20260605_mouse70_donepezil_1,mouse70,new,WT,june,13080,03:38:00,15600,04:20:00,handwritten_lab_notebook,IMG_0417.jpg,nearest_minute,1,Transcribed from June drug timing notes.
+20260616_mouse66_donepezil_1,mouse66,new,WT,june,9180,02:33:00,10920,03:02:00,handwritten_lab_notebook,IMG_0417.jpg,nearest_minute,1,Transcribed from June drug timing notes.
+20260615_mouse64_donepezil_2,mouse64,new,APP,june,9240,02:34:00,10800,03:00:00,handwritten_lab_notebook,IMG_0417.jpg,nearest_minute,1,Transcribed from June drug timing notes.
+20260615_mouse63_donepezil_1,mouse63,new,APP,june,9240,02:34:00,10800,03:00:00,handwritten_lab_notebook,IMG_0417.jpg,nearest_minute,1,Transcribed from June drug timing notes.
+20260607_mouse68_donepezil_2,mouse68,new,WT,june,9360,02:36:00,11220,03:07:00,handwritten_lab_notebook,IMG_0417.jpg,nearest_minute,1,Transcribed from June drug timing notes.
+20260606_mouse61_donepezil_2,mouse61,new,APP,june,8580,02:23:00,10800,03:00:00,handwritten_lab_notebook,IMG_0417.jpg,nearest_minute,1,Transcribed from June drug timing notes.
+20260616_mouse72_donepezil_2,mouse72,new,APP,june,14220,03:57:00,16440,04:34:00,handwritten_lab_notebook,IMG_0417.jpg,nearest_minute,1,Transcribed from June drug timing notes.
