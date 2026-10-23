@@ -1,0 +1,17 @@
+session_id,mouse_id,genotype,cohort,reference_windows,evaluated_windows,skipped_windows,max_absolute_reference_z_error,raw_fs_hz
+20260529_mouse59_baseline_1,mouse59,APP,new,425,425,0,0,610.3515625
+20260529_mouse61_baseline_2,mouse61,APP,new,445,445,0,0,610.3515625
+20260530_mouse63_baseline_1,mouse63,APP,new,462,462,0,0,610.3515625
+20260531_mouse64_baseline_1,mouse64,APP,new,359,359,0,0,610.3515625
+20260607_mouse66_baseline_1,mouse66,WT,new,488,488,0,0,610.3515625
+20260601_mouse68_baseline_1,mouse68,WT,new,341,341,0,0,610.3515625
+20260603_mouse70_baseline_1,mouse70,WT,new,413,413,0,0,610.3515625
+20260602_mouse72_baseline_1,mouse72,APP,new,413,413,0,0,610.3515625
+20251001_mouse1_baseline,mouse1,APP,thesis,489,489,0,0,610.3515625
+20251007_mouse10_baseline,mouse10,APP,thesis,442,442,0,0,762.939453125
+20251013_mouse11_baseline,mouse11,WT,thesis,337,337,0,0,610.3515625
+20251012_mouse12_baseline,mouse12,WT,thesis,393,393,0,0,610.3515625
+20251002_mouse2_baseline,mouse2,WT,thesis,420,420,0,0,610.3515625
+20251011_mouse3_baseline,mouse3,APP,thesis,459,459,0,0,610.3515625
+20251006_mouse4_baseline,mouse4,WT,thesis,412,412,0,0,610.3515625
+20251005_mouse8_baseline,mouse8,WT,thesis,398,398,0,0,610.3515625
