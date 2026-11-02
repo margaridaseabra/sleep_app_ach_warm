@@ -80,7 +80,7 @@ def rem_bouts(scores: np.ndarray) -> list[tuple[int, int, int | None, bool]]:
     for a, b in zip(starts, ends):
         if scores[a] != 2:
             continue
-        censored = b == len(scores)
+        censored = (b == len(scores)) or (b < len(scores) and (not np.isfinite(scores[b]) or scores[b] not in (0, 1, 15)))
         next_state = None if censored else int(scores[b])
         bouts.append((int(a), int(b), next_state, bool(censored)))
     return bouts
@@ -100,7 +100,7 @@ def _band_power(f: np.ndarray, pxx: np.ndarray, lo: float, hi: float) -> np.ndar
     select = (f >= lo) & (f <= hi)
     if np.sum(select) < 2:
         return np.full(pxx.shape[1], np.nan)
-    return np.trapezoid(pxx[select, :], x=f[select], axis=0)
+    return np.trapz(pxx[select, :], x=f[select], axis=0)
 
 
 def theta_features(eeg: np.ndarray, fs: float, start_s: int, end_s: int):
